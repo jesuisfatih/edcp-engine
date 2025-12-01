@@ -647,6 +647,8 @@ class ShopifyClient:
                 'productType': product_data.get('product_type', '') or '',
                 'tags': tags,
                 'status': product_data.get('status', 'ACTIVE').upper(),
+                # ProductInput accepts list of option names
+                'options': option_names if option_names else ['Title']
             }
             
             response = requests.post(
@@ -677,43 +679,7 @@ class ShopifyClient:
             product_id_str = product_gid.replace('gid://shopify/Product/', '')
             product_id = int(product_id_str) if product_id_str.isdigit() else None
             
-            # Step 2: Add product options BEFORE creating variants
-            if option_names:
-                options_mutation = """
-                mutation productOptionsCreate($productId: ID!, $options: [ProductOptionCreateInput!]!) {
-                    productOptionsCreate(productId: $productId, options: $options) {
-                        product {
-                            id
-                            options { id name values }
-                        }
-                        userErrors { field message }
-                    }
-                }
-                """
-                options_input = [{'name': name} for name in option_names]
-                try:
-                    options_resp = requests.post(
-                        self.graphql_url,
-                        headers=self.headers,
-                        json={'query': options_mutation, 'variables': {'productId': product_gid, 'options': options_input}},
-                        timeout=30
-                    )
-                    options_resp.raise_for_status()
-                    options_result = options_resp.json()
-                    if 'errors' in options_result:
-                        msgs = [e.get('message', str(e)) for e in options_result['errors']]
-                        raise Exception(f"Product options create failed: {', '.join(msgs)}")
-                    user_errors = options_result.get('data', {}).get('productOptionsCreate', {}).get('userErrors', [])
-                    if user_errors:
-                        msgs = [e.get('message', str(e)) for e in user_errors]
-                        raise Exception(f"Product options create userErrors: {', '.join(msgs)}")
-                except Exception as e:
-                    raise Exception(f"Failed to add product options: {e}")
-            else:
-                # default Title option implied
-                option_names = ['Title']
-            
-            # Step 3: Get location ID for inventory
+            # Step 2: Get location ID for inventory
             location_id = None
             try:
                 location_query = """
