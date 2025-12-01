@@ -1727,11 +1727,23 @@ class ShopifyClient:
             
             url = f"{self.base_url}/products.json"
             response = requests.post(url, headers=self.headers, json=payload, timeout=30)
-            response.raise_for_status()
+            
+            if response.status_code != 201 and response.status_code != 200:
+                error_detail = ""
+                try:
+                    error_data = response.json()
+                    error_detail = f" | Shopify error: {error_data}"
+                except:
+                    error_detail = f" | Response: {response.text[:500]}"
+                raise Exception(f"REST API {response.status_code} error{error_detail}")
             
             result = response.json()
             product = result.get('product', {})
             product_id = product.get('id')
+            
+            if not product_id:
+                raise Exception(f"No product ID returned. Response: {result}")
+            
             product_gid = f"gid://shopify/Product/{product_id}"
             
             print(f"   REST API: Product shell created (ID: {product_id})")
