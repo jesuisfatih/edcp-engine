@@ -640,26 +640,33 @@ class ShopifyClient:
                 variant_images_map = {}
                 variant_metafields_map = {}
                 
+                # CRITICAL: Extract images and metafields BEFORE creating variants
+                # This ensures we don't lose the data
                 for v in unique_variants:
-                    # CRITICAL FIX: Check both 'image' and '_image' keys (sync_manager uses 'image')
-                    # Use get() instead of pop() to avoid modifying the dict during iteration
-                    image_url = v.get('image') or v.get('_image')
-                    metafields = v.get('metafields', {}) or v.get('_metafields', {})
                     variant_sku = v.get('sku', '')
                     
+                    # Get image URL (check both keys)
+                    image_url = v.get('image') or v.get('_image')
                     if image_url and variant_sku:
                         variant_images_map[variant_sku] = image_url
-                        if len(variant_images_map) <= 3:
-                            print(f"📸 DEBUG: Mapped variant image for SKU {variant_sku}: {image_url[:60]}...")
+                        if len(variant_images_map) <= 5:
+                            print(f"📸 Mapped variant image for SKU {variant_sku}: {image_url[:60]}...")
                     
+                    # Get metafields
+                    metafields = v.get('metafields', {}) or v.get('_metafields', {})
                     if metafields and variant_sku:
                         variant_metafields_map[variant_sku] = metafields
                     
-                    # Remove image and metafields from variant_input before sending to GraphQL
-                    v.pop('image', None)
-                    v.pop('_image', None)
-                    v.pop('metafields', None)
-                    v.pop('_metafields', None)
+                    # CRITICAL: Remove image and metafields from variant_input
+                    # These fields are not part of ProductVariantInput
+                    if 'image' in v:
+                        del v['image']
+                    if '_image' in v:
+                        del v['_image']
+                    if 'metafields' in v:
+                        del v['metafields']
+                    if '_metafields' in v:
+                        del v['_metafields']
                 
                 print(f"📊 Variant images map: {len(variant_images_map)} variants with images")
                 print(f"📊 Variant metafields map: {len(variant_metafields_map)} variants with metafields")
