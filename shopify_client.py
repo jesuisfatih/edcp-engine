@@ -1,6 +1,7 @@
 from typing import List, Dict, Optional
 import time
 import requests
+import json
 
 # Try to import shopify library, but don't fail if it's not available
 try:
@@ -582,18 +583,88 @@ class ShopifyClient:
             return None
     
     def _add_product_images_graphql(self, product_gid: str, image_urls: List[str]) -> int:
-        """STEP 3: Add product images using GraphQL"""
-        # Implementation will be added
-        return 0
+        """STEP 3: Add product images using REST API (simpler than GraphQL)"""
+        try:
+            if not image_urls:
+                return 0
+            
+            product_id_str = product_gid.replace('gid://shopify/Product/', '')
+            added_count = 0
+            
+            for img_url in image_urls:
+                if not img_url or not img_url.strip():
+                    continue
+                
+                try:
+                    url = f"{self.base_url}/products/{product_id_str}/images.json"
+                    payload = {
+                        'image': {
+                            'src': img_url.strip()
+                        }
+                    }
+                    resp = requests.post(url, headers=self.headers, json=payload, timeout=30)
+                    resp.raise_for_status()
+                    added_count += 1
+                    time.sleep(0.2)
+                except:
+                    pass
+            
+            return added_count
+        except:
+            return 0
     
     def _add_variant_images_graphql(self, product_gid: str, variants_data: List[Dict], created_variants: List[Dict]) -> int:
-        """STEP 4: Add variant-specific images using GraphQL"""
-        # Implementation will be added
-        return 0
+        """STEP 4: Add variant-specific images using REST API"""
+        try:
+            if not variants_data or not created_variants:
+                return 0
+            
+            product_id_str = product_gid.replace('gid://shopify/Product/', '')
+            
+            # Build SKU to image URL map
+            sku_to_image = {}
+            for v_data in variants_data:
+                sku = v_data.get('sku', '')
+                img = v_data.get('image')
+                if sku and img:
+                    sku_to_image[sku] = img
+            
+            # Build SKU to variant ID map from created variants
+            sku_to_variant_id = {}
+            for v in created_variants:
+                sku = v.get('sku', '')
+                variant_id = v.get('id', '').replace('gid://shopify/ProductVariant/', '')
+                if sku and variant_id:
+                    sku_to_variant_id[sku] = variant_id
+            
+            added_count = 0
+            
+            for sku, img_url in sku_to_image.items():
+                variant_id = sku_to_variant_id.get(sku)
+                if not variant_id or not img_url:
+                    continue
+                
+                try:
+                    url = f"{self.base_url}/products/{product_id_str}/images.json"
+                    payload = {
+                        'image': {
+                            'src': img_url.strip(),
+                            'variant_ids': [int(variant_id)]
+                        }
+                    }
+                    resp = requests.post(url, headers=self.headers, json=payload, timeout=30)
+                    resp.raise_for_status()
+                    added_count += 1
+                    time.sleep(0.15)
+                except:
+                    pass
+            
+            return added_count
+        except:
+            return 0
     
     def _update_inventory_graphql(self, variants_data: List[Dict], created_variants: List[Dict]) -> int:
-        """STEP 6: Update inventory using GraphQL"""
-        # Implementation will be added
+        """STEP 6: Update inventory - NOT USED (done in STEP 2)"""
         return 0
     
     def _create_product_with_graphql(self, product_data: Dict) -> Dict:
