@@ -121,8 +121,8 @@ class VariantGrouper:
                     cursor.execute('''
                         INSERT OR REPLACE INTO product_groups
                         (group_id, style_id, title, description, vendor, product_type, 
-                         base_category, product_images, product_metafields, tags, status)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
+                         base_category, product_images, product_metafields, tags, status, sync_id)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
                     ''', (
                         group_id,
                         group_data['style_id'],
@@ -133,7 +133,8 @@ class VariantGrouper:
                         base_product.get('baseCategory', ''),
                         json.dumps(product_images),
                         json.dumps(metafields),
-                        ', '.join(tags) if tags else ''
+                        ', '.join(tags) if tags else '',
+                        self.sync_id
                     ))
                     
                     # Save variants
