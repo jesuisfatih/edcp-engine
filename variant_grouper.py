@@ -167,10 +167,17 @@ class VariantGrouper:
                         if not price or price == 0:
                             price = product.get('customerPrice', product.get('piecePrice', '0'))
                         
-                        # Get variant image
+                        # Get variant image with fallbacks and normalized URL
                         variant_image = None
                         if product.get('colorFrontImage'):
-                            variant_image = self.base_url + product['colorFrontImage'].replace('_fm', self.image_size)
+                            img = product['colorFrontImage']
+                            variant_image = img if str(img).startswith('http') else self.base_url + str(img).replace('_fm', self.image_size)
+                        elif product.get('colorSideImage'):
+                            img = product['colorSideImage']
+                            variant_image = img if str(img).startswith('http') else self.base_url + str(img).replace('_fm', self.image_size)
+                        elif product.get('colorBackImage'):
+                            img = product['colorBackImage']
+                            variant_image = img if str(img).startswith('http') else self.base_url + str(img).replace('_fm', self.image_size)
                         
                         # Get color and size
                         color_name = product.get('colorName', '').strip() or f"Color-{product.get('sku', '')}"
