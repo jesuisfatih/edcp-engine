@@ -91,10 +91,15 @@ class VariantGrouper:
                     seen_images = set()
                     for p in group_data['products']:
                         if p.get('colorFrontImage'):
-                            img_url = self.base_url + p['colorFrontImage'].replace('_fm', self.image_size)
+                            img_url = p['colorFrontImage'] if p['colorFrontImage'].startswith('http') else self.base_url + p['colorFrontImage'].replace('_fm', self.image_size)
                             if img_url not in seen_images:
                                 product_images.append(img_url)
                                 seen_images.add(img_url)
+                    # Fallback: style-level image if no color image found
+                    if not product_images and base_product.get('styleImage'):
+                        img_url = base_product['styleImage'] if base_product['styleImage'].startswith('http') else self.base_url + base_product['styleImage'].replace('_fm', self.image_size)
+                        product_images.append(img_url)
+                        seen_images.add(img_url)
                     
                     # Build tags
                     tags = []
@@ -105,6 +110,13 @@ class VariantGrouper:
                             tags.append(base_product['colorFamily'])
                         if base_product.get('baseCategory'):
                             tags.append(base_product['baseCategory'])
+                        # Add category IDs as tags if available
+                        if base_product.get('categories'):
+                            try:
+                                cats = str(base_product['categories'])
+                                tags.extend([c.strip() for c in cats.split(',') if c.strip()])
+                            except Exception:
+                                pass
                     
                     # Build metafields
                     metafields = {}
