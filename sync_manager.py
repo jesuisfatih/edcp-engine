@@ -49,6 +49,10 @@ class SyncManager:
         self.progress = 0
         self.current_product = None
         self.current_index = 0
+        self.step = 'init'
+        self.step_progress = 0
+        self.step = None
+        self.step_progress = 0
         
         try:
             # Inventory-only mode: just update qty on Shopify using cached products
@@ -90,6 +94,8 @@ class SyncManager:
             # STEP 1: Fetch products from S&S API and cache in local database
             self.message = 'Fetching products from S&S Activewear...'
             self.progress = 5
+            self.step = 'fetch'
+            self.step_progress = 5
             
             try:
                 data_fetcher = DataFetcher(self.ss_client, self.sync_id)
@@ -111,9 +117,11 @@ class SyncManager:
                     filter_msg = '. '.join(filter_info) if filter_info else 'Filtre yok'
                     self.message = f'Ürün bulunamadı. Seçilen filtreler: {filter_msg}. Lütfen filtreleri kontrol edin veya farklı filtreler deneyin.'
                     self.progress = 100
+                    self.step_progress = 100
                     return
                 
                 self.progress = 20
+                self.step_progress = 20
                 self.message = f'Cached {cached_count} products to local database'
                 
             except Exception as e:
@@ -142,6 +150,8 @@ class SyncManager:
             # STEP 2: Group products by styleID
             self.message = 'Grouping products by styleID...'
             self.progress = 25
+            self.step = 'group'
+            self.step_progress = 25
             
             try:
                 grouper = VariantGrouper(self.sync_id, self.sync_options)
@@ -167,6 +177,8 @@ class SyncManager:
             # STEP 3: Get product groups from database and sync to Shopify
             self.message = 'Syncing product groups to Shopify...'
             self.progress = 35
+            self.step = 'sync'
+            self.step_progress = 35
             
             product_groups = grouper.get_product_groups(status='pending')
             total_groups = len(product_groups)
@@ -251,6 +263,7 @@ class SyncManager:
             self.current_index = 0
             
             self.status = 'completed'
+            self.progress = 100
             self.message = f'Sync completed: {self.stats["created"]} created, {self.stats["updated"]} updated, {self.stats["errors"]} errors'
             # Save final state
             save_sync_state(self.sync_id, self.status, 100, total_groups, total_groups, self.stats)

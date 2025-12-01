@@ -227,7 +227,9 @@ def sync_status():
         'message': sync_manager.message,
         'stats': sync_manager.stats,
         'errors': sync_manager.errors[-10:],  # Last 10 errors
-        'current_product': current_product_info
+        'current_product': current_product_info,
+        'step': getattr(sync_manager, 'step', None),
+        'step_progress': getattr(sync_manager, 'step_progress', None)
     })
 
 @app.route('/api/sync/stop', methods=['POST'])
@@ -843,4 +845,3 @@ def delete_all_shopify_data():
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
-
