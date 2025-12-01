@@ -1879,9 +1879,12 @@ class ShopifyClient:
                             print(f"[update] Exception updating variant {variant_sku}: {e}")
                             failed_count += 1
                     else:
+                        # CRITICAL FIX: Use correct mutation format for Shopify GraphQL API 2025-10
+                        # productVariantCreate takes only $input: ProductVariantInput!
+                        # productId must be INSIDE ProductVariantInput, not as separate parameter
                         variant_create_mutation = """
-                        mutation productVariantCreate($productId: ID!, $variant: ProductVariantInput!) {
-                            productVariantCreate(productId: $productId, variant: $variant) {
+                        mutation productVariantCreate($input: ProductVariantInput!) {
+                            productVariantCreate(input: $input) {
                                 productVariant { id sku }
                                 userErrors { field message }
                             }
