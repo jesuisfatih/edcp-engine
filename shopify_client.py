@@ -1868,26 +1868,26 @@ class ShopifyClient:
                         }
 
                         # Convert selectedOptions to options array (array of strings, not objects)
+                        # Convert selectedOptions to optionValues array
+                        # selectedOptions format: [{'name': 'Color', 'value': 'Red'}, {'name': 'Size', 'value': 'M'}]
+                        # optionValues format: [{'name': 'Red', 'optionName': 'Color'}, {'name': 'M', 'optionName': 'Size'}]
                         if new_selected_options:
-                            # Extract values from selectedOptions in order
-                            options_array = [opt.get('value', '') for opt in new_selected_options if opt.get('value')]
-                            if options_array:
-                                variant_payload['options'] = options_array
+                            option_values = []
+                            for opt in new_selected_options:
+                                if opt.get('name') and opt.get('value'):
+                                    option_values.append({
+                                        'name': opt['value'],  # value becomes name
+                                        'optionName': opt['name']  # name becomes optionName
+                                    })
+                            if option_values:
+                                variant_payload['optionValues'] = option_values
                             else:
-                                variant_payload['options'] = [variant_sku if variant_sku else f"Variant-{created_count+1}"]
+                                print(f"[update] WARNING: Variant {variant_sku} has empty selectedOptions, skipping optionValues")
                         else:
-                            variant_payload['options'] = [variant_sku if variant_sku else f"Variant-{created_count+1}"]
+                            print(f"[update] CRITICAL ERROR: Variant {variant_sku} has no selectedOptions, cannot create variant without options")
 
-                        if location_id and variant_data.get('inventory_quantity') is not None:
-                            variant_payload['inventoryQuantities'] = [{
-                                'availableQuantity': variant_data.get('inventory_quantity', 0) or 0,
-                                'locationId': location_id
-                            }]
-
-                        if variant_data.get('inventory_management') is None:
-                            variant_payload['inventoryPolicy'] = 'CONTINUE'
-                        else:
-                            variant_payload['inventoryPolicy'] = 'DENY'
+                        # NOTE: inventoryQuantities and inventoryPolicy are NOT supported in ProductVariantsBulkInput
+                        # These must be set in a separate step after variant creation
 
                         # Use productVariantsBulkCreate (even for single variant)
                         variant_bulk_mutation = """
