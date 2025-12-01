@@ -72,6 +72,9 @@ class SyncManager:
                 self.status = 'completed'
                 self.progress = 100
                 self.message = f"Inventory sync done: {result.get('updated',0)} updated, {len(result.get('failed',[]))} failed"
+                # Log failures for visibility
+                if result.get('failed'):
+                    print(f"[inventory] Failed entries: {result['failed'][:10]}")
                 save_sync_history(
                     self.sync_id,
                     self.status,

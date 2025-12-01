@@ -322,6 +322,10 @@ class ShopifyClient:
                 if not variant or not variant.get('inventory_item_id'):
                     results['failed'].append(f"{sku}: variant not found")
                     continue
+                # If too many locations, warn
+                if len(locs) > 5:
+                    results['failed'].append(f"{sku}: too many locations to update ({len(locs)})")
+                    continue
                 ok_any = False
                 for loc in locs:
                     success = self.set_inventory_quantity(variant['inventory_item_id'], loc, int(qty or 0))

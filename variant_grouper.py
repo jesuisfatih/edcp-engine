@@ -138,6 +138,10 @@ class VariantGrouper:
                     # Include categoryNames list for downstream collections/tags
                     if base_product.get('categoryNames'):
                         metafields['categoryNames'] = base_product['categoryNames']
+                    # Guard metafields size to avoid Shopify userErrors (limit namespace count)
+                    if len(metafields) > 30:
+                        keys = list(metafields.keys())[:30]
+                        metafields = {k: metafields[k] for k in keys}
                     
                     # Save product group
                     cursor.execute('''
