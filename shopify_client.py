@@ -419,13 +419,24 @@ class ShopifyClient:
             }
             """
             
+            option_names = []
+            if variants and any(v.get('option1') for v in variants):
+                option_names.append('Color')
+            if variants and any(v.get('option2') for v in variants):
+                option_names.append('Size')
+            if variants and any(v.get('option3') for v in variants):
+                option_names.append('Style')
+            if variants and not option_names:
+                option_names.append('Title')
+
             product_input = {
                 'title': product_data.get('title', 'Product'),
                 'descriptionHtml': product_data.get('description', '') or '',
                 'vendor': product_data.get('vendor', '') or '',
                 'productType': product_data.get('product_type', '') or '',
                 'tags': product_data.get('tags', '').split(',') if product_data.get('tags') else [],
-                'status': product_data.get('status', 'ACTIVE').upper()
+                'status': product_data.get('status', 'ACTIVE').upper(),
+                'options': [{'name': name} for name in option_names] if option_names else [{'name': 'Title'}]
             }
             
             response = requests.post(
@@ -456,87 +467,7 @@ class ShopifyClient:
             product_id_str = product_gid.replace('gid://shopify/Product/', '')
             product_id = int(product_id_str) if product_id_str.isdigit() else None
             
-            # Step 2: Add product options - CRITICAL: Must be done BEFORE creating variants
-            if variants:
-                # Determine option names from variants
-                option_names = []
-                if any(v.get('option1') for v in variants):
-                    option_names.append('Color')
-                if any(v.get('option2') for v in variants):
-                    option_names.append('Size')
-                if any(v.get('option3') for v in variants):
-                    option_names.append('Style')
-                
-                # CRITICAL: If no options detected, create a default option
-                if not option_names:
-                    print("⚠️ WARNING: No options detected in variants, creating default 'Title' option")
-                    option_names.append('Title')
-                
-                if option_names:
-                    options_mutation = """
-                    mutation productOptionsUpdate($productId: ID!, $options: [ProductOptionInput!]!) {
-                        productOptionsUpdate(productId: $productId, options: $options) {
-                            product {
-                                id
-                                options {
-                                    id
-                                    name
-                                    values
-                                }
-                            }
-                            userErrors {
-                                field
-                                message
-                            }
-                        }
-                    }
-                    """
-                    
-                    options_input = [{'name': name} for name in option_names]
-                    
-                    print(f"📝 Adding {len(option_names)} product options: {option_names}")
-                    
-                    options_response = requests.post(
-                        self.graphql_url,
-                        headers=self.headers,
-                        json={
-                            'query': options_mutation,
-                            'variables': {
-                                'productId': product_gid,
-                                'options': options_input
-                            }
-                        },
-                        timeout=30
-                    )
-                    options_response.raise_for_status()
-                    options_result = options_response.json()
-                    
-                    # Check for errors
-                    if 'errors' in options_result:
-                        error_messages = [e.get('message', str(e)) for e in options_result['errors']]
-                        raise Exception(f"Failed to add product options: {', '.join(error_messages)}")
-                    
-                    options_update = options_result.get('data', {}).get('productOptionsUpdate', {})
-                    user_errors = options_update.get('userErrors', [])
-                    if user_errors:
-                        error_messages = [e.get('message', str(e)) for e in user_errors]
-                        raise Exception(f"Failed to add product options: {', '.join(error_messages)}")
-                    
-                    # Verify options were added
-                    product_with_options = options_update.get('product', {})
-                    if product_with_options:
-                        added_options = product_with_options.get('options', [])
-                        print(f"✅ Product options added successfully: {[opt.get('name') for opt in added_options]}")
-                    else:
-                        print("⚠️ WARNING: Options update succeeded but could not verify options in response")
-                    
-                    time.sleep(0.3)  # Give Shopify time to process options
-                else:
-                    raise Exception("CRITICAL: Cannot create variants without product options")
-            else:
-                raise Exception("CRITICAL: Cannot create product without variants")
-            
-            # Step 3: Get location ID for inventory
+            # Step 2: Get location ID for inventory
             location_id = None
             try:
                 location_query = """
@@ -576,10 +507,10 @@ class ShopifyClient:
             unique_variants = []
             
             for variant_data in variants:
-                option1 = str(variant_data.get('option1', '')).strip()
-                option2 = str(variant_data.get('option2', '')).strip()
-                option3 = str(variant_data.get('option3', '')).strip()
-                sku = str(variant_data.get('sku', '')).strip()
+                option1 = str(variant_data.get('option1') or '').strip()
+                option2 = str(variant_data.get('option2') or '').strip()
+                option3 = str(variant_data.get('option3') or '').strip()
+                sku = str(variant_data.get('sku') or '').strip()
                 
                 # CRITICAL: Shopify doesn't allow duplicate option combinations
                 option_combination = (option1, option2, option3)
@@ -1440,10 +1371,10 @@ class ShopifyClient:
                 variant_records = []  # Track variant GIDs/SKUs after update/create for images/metafields
 
                 for variant_data in variants_input:
-                    variant_sku = variant_data.get('sku', '').strip()
-                    option1 = variant_data.get('option1', '').strip()
-                    option2 = variant_data.get('option2', '').strip()
-                    option3 = variant_data.get('option3', '').strip()
+                    variant_sku = (variant_data.get('sku') or '').strip()
+                    option1 = (variant_data.get('option1') or '').strip()
+                    option2 = (variant_data.get('option2') or '').strip()
+                    option3 = (variant_data.get('option3') or '').strip()
 
                     new_selected_options = []
                     if option1:

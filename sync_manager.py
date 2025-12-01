@@ -613,9 +613,9 @@ class SyncManager:
         
         for idx, variant in enumerate(variants):
             # CRITICAL: Ensure option1 and option2 are never empty
-            color_name = variant.get('color_name', '').strip()
-            size_name = variant.get('size_name', '').strip()
-            sku = variant.get('sku', '').strip()
+            color_name = (variant.get('color_name') or '').strip()
+            size_name = (variant.get('size_name') or '').strip()
+            sku = (variant.get('sku') or '').strip()
             
             # Fallback if empty
             if not color_name:
