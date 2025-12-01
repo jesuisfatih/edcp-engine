@@ -1891,7 +1891,9 @@ class ShopifyClient:
                         }
                         """
 
+                        # CRITICAL FIX: productId must be INSIDE ProductVariantInput
                         variant_input = {
+                            'productId': product_gid,  # productId goes INSIDE the input
                             'price': str(variant_data.get('price', '0')),
                             'sku': variant_sku if variant_sku else None,
                             'barcode': variant_data.get('barcode', '') or None,
@@ -1910,11 +1912,16 @@ class ShopifyClient:
                                 'locationId': location_id
                             }]
 
+                        if variant_data.get('inventory_management') is None:
+                            variant_input['inventoryPolicy'] = 'CONTINUE'
+                        else:
+                            variant_input['inventoryPolicy'] = 'DENY'
+
                         try:
                             create_response = requests.post(
                                 self.graphql_url,
                                 headers=self.headers,
-                                json={'query': variant_create_mutation, 'variables': {'productId': product_gid, 'variant': variant_input}},
+                                json={'query': variant_create_mutation, 'variables': {'input': variant_input}},  # Use 'input' not 'productId' and 'variant'
                                 timeout=30
                             )
                             create_response.raise_for_status()
