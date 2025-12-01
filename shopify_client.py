@@ -1070,116 +1070,74 @@ class ShopifyClient:
                     if not img_url or not img_url.strip():
                         continue
                     
-                    # CRITICAL FIX: Use fileCreate instead of deprecated productImageCreate
-                    file_create_mutation = """
-                    mutation fileCreate($files: [FileCreateInput!]!) {
-                        fileCreate(files: $files) {
-                            files {
-                                id
-                                ... on MediaImage {
-                                    image {
-                                        url
+                    # CRITICAL FIX: Use mediaCreate directly with CreateMediaInput (originalSource, mediaContentType)
+                    # This is the correct approach per Shopify GraphQL API 2025-10
+                    try:
+                        media_create_mutation = """
+                        mutation mediaCreate($productId: ID!, $media: [CreateMediaInput!]!) {
+                            mediaCreate(productId: $productId, media: $media) {
+                                media {
+                                    id
+                                    ... on MediaImage {
+                                        image {
+                                            url
+                                        }
                                     }
                                 }
-                            }
-                            userErrors {
-                                field
-                                message
+                                mediaUserErrors {
+                                    field
+                                    message
+                                }
                             }
                         }
-                    }
-                    """
-                    
-                    # fileCreate requires files array with originalSource
-                    file_input = {
-                        'files': [{
-                            'originalSource': img_url.strip(),
-                            'alt': f"Product image {idx+1}",
-                            'contentType': 'IMAGE'
-                        }]
-                    }
-                    
-                    try:
-                        file_response = requests.post(
+                        """
+                        
+                        # CreateMediaInput requires: originalSource (String!), mediaContentType (MediaContentType!), alt (String)
+                        media_input = {
+                            'productId': product_gid,
+                            'media': [{
+                                'originalSource': img_url.strip(),
+                                'mediaContentType': 'IMAGE',
+                                'alt': f"Product image {idx+1}"
+                            }]
+                        }
+                        
+                        media_response = requests.post(
                             self.graphql_url,
                             headers=self.headers,
                             json={
-                                'query': file_create_mutation,
-                                'variables': file_input
+                                'query': media_create_mutation,
+                                'variables': media_input
                             },
                             timeout=30
                         )
-                        file_response.raise_for_status()
-                        result = file_response.json()
+                        media_response.raise_for_status()
+                        media_result = media_response.json()
                         
-                        if 'errors' in result:
-                            print(f"Warning: GraphQL error adding product image {idx+1}: {result['errors']}")
+                        if 'errors' in media_result:
+                            print(f"Warning: GraphQL error creating media for product image {idx+1}: {media_result['errors']}")
                         else:
-                            file_create_data = result.get('data', {}).get('fileCreate', {})
-                            user_errors = file_create_data.get('userErrors', [])
+                            media_data = media_result.get('data', {}).get('mediaCreate', {})
+                            media_user_errors = media_data.get('mediaUserErrors', [])
                             
-                            if user_errors:
-                                print(f"Warning: User errors adding product image {idx+1}: {user_errors}")
+                            if media_user_errors:
+                                print(f"Warning: User errors creating media for product image {idx+1}: {media_user_errors}")
                             else:
-                                files = file_create_data.get('files', [])
-                                if files:
-                                    media_id = files[0].get('id')
+                                created_media = media_data.get('media', [])
+                                if created_media:
+                                    media_id = created_media[0].get('id')
                                     if media_id:
                                         created_media_ids.append(media_id)
                                         image_count += 1
-                                        print(f"✅ Successfully added product image {image_count}/{len(product_images)} (Media ID: {media_id})")
-                                        
-                                        # Associate media with product using mediaCreate (correct method per Shopify docs)
-                                        try:
-                                            media_create_mutation = """
-                                            mutation mediaCreate($productId: ID!, $media: [CreateMediaInput!]!) {
-                                                mediaCreate(productId: $productId, media: $media) {
-                                                    media {
-                                                        id
-                                                        ... on MediaImage {
-                                                            image {
-                                                                url
-                                                            }
-                                                        }
-                                                    }
-                                                    mediaUserErrors {
-                                                        field
-                                                        message
-                                                    }
-                                                }
-                                            }
-                                            """
-                                            
-                                            media_response = requests.post(
-                                                self.graphql_url,
-                                                headers=self.headers,
-                                                json={
-                                                    'query': media_create_mutation,
-                                                    'variables': {
-                                                        'productId': product_gid,
-                                                        'media': [{'mediaId': media_id}]
-                                                    }
-                                                },
-                                                timeout=30
-                                            )
-                                            media_response.raise_for_status()
-                                            media_result = media_response.json()
-                                            
-                                            if 'errors' in media_result:
-                                                print(f"Warning: Error associating media {media_id} with product: {media_result['errors']}")
-                                            else:
-                                                media_errors = media_result.get('data', {}).get('mediaCreate', {}).get('mediaUserErrors', [])
-                                                if media_errors:
-                                                    print(f"Warning: User errors associating media: {media_errors}")
-                                                else:
-                                                    print(f"   Media {media_id} associated with product")
-                                        except Exception as media_e:
-                                            print(f"Warning: Could not associate media {media_id} with product: {media_e}")
+                                        print(f"✅ Successfully created and added product image {image_count}/{len(product_images)} (Media ID: {media_id})")
+                                    else:
+                                        print(f"Warning: mediaCreate succeeded but no media ID returned for image {idx+1}")
                                 else:
-                                    print(f"Warning: fileCreate succeeded but no files returned for image {idx+1}")
+                                    print(f"Warning: mediaCreate succeeded but no media returned for image {idx+1}")
+                        
                         time.sleep(0.2)
                     except Exception as e:
-                        print(f"Warning: Could not add product image {idx+1} ({img_url[:50]}...): {e}")
+                        print(f"Warning: Could not create media for product image {idx+1} ({img_url[:50]}...): {e}")
                         import traceback
                         print(f"   Traceback: {traceback.format_exc()[:200]}")
                 
