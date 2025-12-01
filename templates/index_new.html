@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>S&S Activewear to Shopify Sync Panel</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f5f5f5;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .sidebar {
+            min-height: 100vh;
+            background: linear-gradient(180deg, #2c3e50 0%, #34495e 100%);
+            color: white;
+            padding: 0;
+            position: fixed;
+            width: 250px;
+            z-index: 1000;
+        }
+        .sidebar-header {
+            padding: 20px;
+            background: rgba(0,0,0,0.2);
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .sidebar-menu {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        .sidebar-menu li {
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .sidebar-menu a {
+            display: block;
+            padding: 15px 20px;
+            color: rgba(255,255,255,0.8);
+            text-decoration: none;
+            transition: all 0.3s;
+        }
+        .sidebar-menu a:hover,
+        .sidebar-menu a.active {
+            background: rgba(255,255,255,0.1);
+            color: white;
+            padding-left: 25px;
+        }
+        .sidebar-menu a i {
+            width: 25px;
+            margin-right: 10px;
+        }
+        .main-content {
+            margin-left: 250px;
+            padding: 20px;
+        }
+        .content-section {
+            display: none;
+        }
+        .content-section.active {
+            display: block;
+        }
+        .card {
+            box-shadow: 0 2px 4px rgba(0,0,0,.1);
+            border: none;
+            margin-bottom: 20px;
+        }
+        .badge-status {
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-weight: 600;
+        }
+        .product-item {
+            padding: 15px;
+            border-bottom: 1px solid #eee;
+            transition: background 0.3s;
+        }
+        .product-item:hover {
+            background: #f8f9fa;
+        }
+        .progress-lg {
+            height: 40px;
+            font-size: 16px;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <h4><i class="fas fa-sync-alt"></i> Sync Panel</h4>
+        </div>
+        <ul class="sidebar-menu">
+            <li><a href="#" onclick="showSection('dashboard'); return false;" class="active" id="menu-dashboard">
+                <i class="fas fa-tachometer-alt"></i> Dashboard
+            </a></li>
+            <li><a href="#" onclick="showSection('settings'); return false;" id="menu-settings">
+                <i class="fas fa-cog"></i> API Ayarları
+            </a></li>
+            <li><a href="#" onclick="showSection('sync-options'); return false;" id="menu-sync-options">
+                <i class="fas fa-sliders-h"></i> Aktarım Seçenekleri
+            </a></li>
+            <li><a href="#" onclick="showSection('sync-settings'); return false;" id="menu-sync-settings">
+                <i class="fas fa-tasks"></i> Aktarım Ayarları
+            </a></li>
+            <li><a href="#" onclick="showSection('sync-active'); return false;" id="menu-sync-active">
+                <i class="fas fa-play-circle"></i> Aktarım
+            </a></li>
+            <li><a href="#" onclick="showSection('auto-sync'); return false;" id="menu-auto-sync">
+                <i class="fas fa-clock"></i> Otomatik Güncelleme
+            </a></li>
+            <li><a href="#" onclick="showSection('preview'); return false;" id="menu-preview">
+                <i class="fas fa-eye"></i> Ürün Önizleme
+            </a></li>
+        </ul>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <!-- Dashboard Section -->
+        <div id="section-dashboard" class="content-section active">
+            <h2 class="mb-4"><i class="fas fa-tachometer-alt"></i> Dashboard</h2>
+            
+            <div class="row mb-4">
+                <div class="col-md-3">
+                    <div class="card text-center bg-primary text-white">
+                        <div class="card-body">
+                            <h3 id="stat-total">0</h3>
+                            <p class="mb-0">Toplam Ürün</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card text-center bg-success text-white">
+                        <div class="card-body">
+                            <h3 id="stat-created">0</h3>
+                            <p class="mb-0">Oluşturulan</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card text-center bg-warning text-white">
+                        <div class="card-body">
+                            <h3 id="stat-updated">0</h3>
+                            <p class="mb-0">Güncellenen</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card text-center bg-danger text-white">
+                        <div class="card-body">
+                            <h3 id="stat-errors">0</h3>
+                            <p class="mb-0">Hatalar</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h5>Son Aktarım Durumu</h5>
+                </div>
+                <div class="card-body">
+                    <div id="dashboard-status">
+                        <p class="text-muted">Henüz aktarım yapılmadı</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h5>Otomatik Güncelleme Durumu</h5>
+                </div>
+                <div class="card-body">
+                    <div id="auto-sync-status-dashboard">
+                        <p class="text-muted">Yükleniyor...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- API Settings Section -->
+        <div id="section-settings" class="content-section">
+            <h2 class="mb-4"><i class="fas fa-cog"></i> API Ayarları</h2>
+            
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h5>S&S Activewear API</h5>
+                </div>
+                <div class="card-body">
+                    <form id="configForm">
+                        <div class="mb-3">
+                            <label class="form-label">Account Number</label>
+                            <input type="text" class="form-control" id="ssAccountNumber" 
+                                   placeholder="Your Account Number" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">API Key</label>
+                            <input type="password" class="form-control" id="ssApiKey" 
+                                   placeholder="Your API Key" required>
+                            <small class="text-muted">
+                                <a href="https://www.ssactivewear.com/api" target="_blank">Get API Key</a>
+                            </small>
+                        </div>
+
+                        <h6 class="mt-4 mb-3">Shopify API</h6>
+                        <div class="mb-3">
+                            <label class="form-label">Shop Domain</label>
+                            <input type="text" class="form-control" id="shopifyDomain" 
+                                   placeholder="your-shop.myshopify.com" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Access Token</label>
+                            <input type="password" class="form-control" id="shopifyToken" 
+                                   placeholder="Your Admin API Access Token" required>
+                            <small class="text-muted">Shopify Admin API 2025-01</small>
+                        </div>
+
+                        <button type="button" class="btn btn-info mb-2" onclick="testConnections()">
+                            <i class="fas fa-plug"></i> Test Connections
+                        </button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save"></i> Save Configuration
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="card" id="connectionResults" style="display: none;">
+                <div class="card-header">
+                    <h5>Connection Test Results</h5>
+                </div>
+                <div class="card-body" id="connectionResultsBody">
+                </div>
+            </div>
+        </div>
+
+        <!-- Sync Options Section -->
+        <div id="section-sync-options" class="content-section">
+            <h2 class="mb-4"><i class="fas fa-sliders-h"></i> Aktarım Seçenekleri</h2>
+            
+            <div class="card">
+                <div class="card-header bg-success text-white">
+                    <h5>Genel Seçenekler</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-check mb-3">
+                                <input class="form-check-input" type="checkbox" id="syncAllProducts" checked>
+                                <label class="form-check-label" for="syncAllProducts">
+                                    Tüm Ürünleri Aktar
+                                </label>
+                            </div>
+                            <div class="form-check mb-3">
+                                <input class="form-check-input" type="checkbox" id="createNew" checked>
+                                <label class="form-check-label" for="createNew">
+                                    Yeni Ürünler Oluştur
+                                </label>
+                            </div>
+                            <div class="form-check mb-3">
+                                <input class="form-check-input" type="checkbox" id="updateExisting" checked>
+                                <label class="form-check-label" for="updateExisting">
+                                    Mevcut Ürünleri Güncelle
+                                </label>
+                            </div>
+                            <div class="form-check mb-3">
+                                <input class="form-check-input" type="checkbox" id="syncCollections" checked>
+                                <label class="form-check-label" for="syncCollections">
+                                    Koleksiyonları Aktar
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-check mb-3">
+                                <input class="form-check-input" type="checkbox" id="createCollections" checked>
+                                <label class="form-check-label" for="createCollections">
+                                    Koleksiyon Yoksa Oluştur
+                                </label>
+                            </div>
+                            <div class="form-check mb-3">
+                                <input class="form-check-input" type="checkbox" id="createBrandCollections" checked>
+                                <label class="form-check-label" for="createBrandCollections">
+                                    Marka Koleksiyonları Oluştur
+                                </label>
+                            </div>
+                            <div class="form-check mb-3">
+                                <input class="form-check-input" type="checkbox" id="syncTags" checked>
+                                <label class="form-check-label" for="syncTags">
+                                    Etiketleri Aktar
+                                </label>
+                            </div>
+                            <div class="form-check mb-3">
+                                <input class="form-check-input" type="checkbox" id="setActive" checked>
+                                <label class="form-check-label" for="setActive">
+                                    Ürünleri Aktif Yap
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h5>Filtreleme Seçenekleri</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Stil Filtresi</label>
+                                <input type="text" class="form-control" id="filterStyle" 
+                                       placeholder="örn: 00760, Gildan 5000">
+                                <small class="text-muted">Virgülle ayırın</small>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Part Number Filtresi</label>
+                                <input type="text" class="form-control" id="filterPartNumber" 
+                                       placeholder="örn: 00760">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Marka Filtresi</label>
+                                <input type="text" class="form-control" id="filterBrand" 
+                                       placeholder="örn: Gildan">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Kategori Filtresi</label>
+                                <button type="button" class="btn btn-sm btn-outline-primary mb-2" onclick="loadCategories()">
+                                    <i class="fas fa-sync"></i> Kategorileri Yükle
+                                </button>
+                                <select class="form-select" id="filterCategory" multiple size="5">
+                                    <option value="">Kategoriler yükleniyor...</option>
+                                </select>
+                                <small class="text-muted">Ctrl/Cmd ile çoklu seçim</small>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Depo Filtresi</label>
+                                <input type="text" class="form-control" id="filterWarehouses" 
+                                       placeholder="örn: IL,KS,PA">
+                                <small class="text-muted">Virgülle ayırın: IL,KS,PA</small>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">SKU/GTIN Filtresi</label>
+                                <input type="text" class="form-control" id="filterSku" 
+                                       placeholder="örn: B00760004">
+                                <small class="text-muted">Virgülle ayırın</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sync Settings Section -->
+        <div id="section-sync-settings" class="content-section">
+            <h2 class="mb-4"><i class="fas fa-tasks"></i> Aktarım Ayarları</h2>
+            
+            <div class="card">
+                <div class="card-header">
+                    <h5>Gelişmiş Ayarlar</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label">Fiyat Alanı</label>
+                        <select class="form-select" id="priceField">
+                            <option value="customerPrice">Müşteri Fiyatı (customerPrice)</option>
+                            <option value="piecePrice">Parça Fiyatı (piecePrice)</option>
+                            <option value="dozenPrice">Düzine Fiyatı (dozenPrice)</option>
+                            <option value="casePrice">Kasa Fiyatı (casePrice)</option>
+                            <option value="mapPrice">MAP Fiyatı (mapPrice)</option>
+                            <option value="salePrice">İndirimli Fiyat (salePrice)</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Envanter Yönetimi</label>
+                        <select class="form-select" id="inventoryManagement">
+                            <option value="shopify">Shopify Yönetimi</option>
+                            <option value="not_managed">Yönetilmeyen</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Görsel Boyutu</label>
+                        <select class="form-select" id="imageSize">
+                            <option value="_fl">Büyük (Large)</option>
+                            <option value="_fm">Orta (Medium)</option>
+                            <option value="_fs">Küçük (Small)</option>
+                        </select>
+                    </div>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="updateInventory" checked>
+                        <label class="form-check-label" for="updateInventory">
+                            Envanteri Güncelle
+                        </label>
+                    </div>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="updatePrices" checked>
+                        <label class="form-check-label" for="updatePrices">
+                            Fiyatları Güncelle
+                        </label>
+                    </div>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="updateImages" checked>
+                        <label class="form-check-label" for="updateImages">
+                            Görselleri Güncelle
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sync Active Section -->
+        <div id="section-sync-active" class="content-section">
+            <h2 class="mb-4"><i class="fas fa-play-circle"></i> Aktarım</h2>
+            
+            <div class="card">
+                <div class="card-header bg-dark text-white">
+                    <h5>Aktarım Kontrolü</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <button class="btn btn-success btn-lg w-100" onclick="startSync()" id="startBtn">
+                                <i class="fas fa-play"></i> Aktarımı Başlat
+                            </button>
+                        </div>
+                        <div class="col-md-4">
+                            <button class="btn btn-warning btn-lg w-100" onclick="stopSync()" id="stopBtn" disabled>
+                                <i class="fas fa-stop"></i> Durdur
+                            </button>
+                        </div>
+                        <div class="col-md-4">
+                            <button class="btn btn-info btn-lg w-100" onclick="previewProducts()">
+                                <i class="fas fa-eye"></i> Önizleme
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="mb-3" id="progressSection" style="display: none;">
+                        <div class="d-flex justify-content-between mb-2">
+                            <span id="progressText">Başlatılıyor...</span>
+                            <span id="progressPercent">0%</span>
+                        </div>
+                        <div class="progress progress-lg">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                                 role="progressbar" id="progressBar" 
+                                 style="width: 0%">0%</div>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-info" id="statusAlert" style="display: none;">
+                        <i class="fas fa-info-circle"></i> <span id="statusMessage"></span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card" id="currentProductCard" style="display: none;">
+                <div class="card-header bg-primary text-white">
+                    <h5>Şu Anda Aktarılan Ürün</h5>
+                </div>
+                <div class="card-body">
+                    <div id="currentProductInfo">
+                        <p class="text-muted">Yükleniyor...</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h5>İstatistikler</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-3">
+                            <div class="card text-center bg-primary text-white">
+                                <div class="card-body">
+                                    <h3 id="statTotalActive">0</h3>
+                                    <p class="mb-0">Toplam</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card text-center bg-success text-white">
+                                <div class="card-body">
+                                    <h3 id="statCreatedActive">0</h3>
+                                    <p class="mb-0">Oluşturulan</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card text-center bg-warning text-white">
+                                <div class="card-body">
+                                    <h3 id="statUpdatedActive">0</h3>
+                                    <p class="mb-0">Güncellenen</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card text-center bg-danger text-white">
+                                <div class="card-body">
+                                    <h3 id="statErrorsActive">0</h3>
+                                    <p class="mb-0">Hatalar</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card" id="errorLog" style="display: none;">
+                <div class="card-header bg-danger text-white">
+                    <h5><i class="fas fa-exclamation-triangle"></i> Hata Logları</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>SKU</th>
+                                    <th>Hata</th>
+                                    <th>Zaman</th>
+                                </tr>
+                            </thead>
+                            <tbody id="errorLogBody">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Auto Sync Section -->
+        <div id="section-auto-sync" class="content-section">
+            <h2 class="mb-4"><i class="fas fa-clock"></i> Otomatik Güncelleme</h2>
+            
+            <div class="card">
+                <div class="card-header bg-info text-white">
+                    <h5>Otomatik Güncelleme Ayarları</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="autoSyncEnabled">
+                            <label class="form-check-label" for="autoSyncEnabled">
+                                Otomatik Güncellemeyi Etkinleştir
+                            </label>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Güncelleme Aralığı (Saat)</label>
+                        <input type="number" class="form-control" id="autoSyncInterval" value="12" min="1" max="168">
+                        <small class="text-muted">12 saat = Günde 2 kez güncelleme</small>
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="autoSyncRequireApproval" checked>
+                            <label class="form-check-label" for="autoSyncRequireApproval">
+                                Güncelleme Öncesi Onay İste
+                            </label>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary" onclick="saveAutoSyncSettings()">
+                        <i class="fas fa-save"></i> Ayarları Kaydet
+                    </button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h5>Otomatik Güncelleme Durumu</h5>
+                </div>
+                <div class="card-body" id="autoSyncStatus">
+                    <p class="text-muted">Yükleniyor...</p>
+                </div>
+            </div>
+
+            <div class="card" id="pendingApprovalCard" style="display: none;">
+                <div class="card-header bg-warning">
+                    <h5>Onay Bekleyen Güncelleme</h5>
+                </div>
+                <div class="card-body">
+                    <p>Otomatik güncelleme başlatılmak için onay bekliyor.</p>
+                    <button class="btn btn-success" onclick="approveAutoSync()">
+                        <i class="fas fa-check"></i> Onayla ve Başlat
+                    </button>
+                    <button class="btn btn-danger" onclick="rejectAutoSync()">
+                        <i class="fas fa-times"></i> Reddet
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Preview Section -->
+        <div id="section-preview" class="content-section">
+            <h2 class="mb-4"><i class="fas fa-eye"></i> Ürün Önizleme</h2>
+            
+            <div class="card">
+                <div class="card-header">
+                    <h5>Ürün Önizleme</h5>
+                </div>
+                <div class="card-body">
+                    <button class="btn btn-primary mb-3" onclick="previewProducts()">
+                        <i class="fas fa-sync"></i> Ürünleri Yükle
+                    </button>
+                    <div class="table-responsive">
+                        <table class="table table-striped" id="previewTable">
+                            <thead>
+                                <tr>
+                                    <th>SKU</th>
+                                    <th>Marka</th>
+                                    <th>Stil</th>
+                                    <th>Renk</th>
+                                    <th>Beden</th>
+                                    <th>Fiyat</th>
+                                    <th>Stok</th>
+                                </tr>
+                            </thead>
+                            <tbody id="previewTableBody">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='script_new.js') }}"></script>
+</body>
+</html>
+
+

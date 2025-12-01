@@ -1,0 +1,17 @@
+[Unit]
+Description=S&S Activewear to Shopify Sync Panel
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/edcp
+Environment="PATH=/opt/edcp/venv/bin"
+ExecStart=/opt/edcp/venv/bin/python /opt/edcp/app.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+
+
