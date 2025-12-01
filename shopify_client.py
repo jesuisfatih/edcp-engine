@@ -695,21 +695,20 @@ class ShopifyClient:
             product_id_str = product_gid.replace('gid://shopify/Product/', '')
             product_id = int(product_id_str) if product_id_str.isdigit() else None
             
-            # Step 1.5: Delete ALL existing variants - DISABLED
+            # Step 1.5: Skip variant deletion - DISABLED
             # CRITICAL: Variant deletion is causing more problems than it solves
-            # Instead, we'll skip duplicate variants in the creation step
-            skip_variant_deletion = True
-            if not skip_variant_deletion:
+            # We'll handle "already exists" errors gracefully instead
+            print("⚠️ Variant deletion DISABLED - will handle duplicates during creation")
                 try:
                     print("🔍 Checking for existing variants (including default variant)...")
                     # Fetch ALL variants (not just first 10) using pagination
                     all_existing_variants = []
-                cursor = None
-                max_iterations = 10
-                iteration = 0
-                
-                while iteration < max_iterations:
-                    product_query = """
+                    cursor = None
+                    max_iterations = 10
+                    iteration = 0
+                    
+                    while iteration < max_iterations:
+                        product_query = """
                     query getProduct($id: ID!, $cursor: String) {
                         product(id: $id) {
                             id
@@ -830,11 +829,6 @@ class ShopifyClient:
                         time.sleep(1.0)
                 else:
                     print("✅ No existing variants found")
-                except Exception as e:
-                    print(f"⚠️ Warning: Could not check/delete existing variants: {e}")
-                    # Continue anyway - we'll try to create variants and handle errors
-            else:
-                print("⚠️ Variant deletion DISABLED - will skip duplicates during creation")
             
             # Step 2: Get location ID for inventory
             location_id = None
