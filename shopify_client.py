@@ -735,6 +735,92 @@ class ShopifyClient:
             product_id_str = product_gid.replace('gid://shopify/Product/', '')
             product_id = int(product_id_str) if product_id_str.isdigit() else None
             
+            # Step 1.5: Delete default variant if it exists
+            # Shopify automatically creates a default variant when product is created
+            # We need to delete it before creating our variants
+            try:
+                print("Checking for default variant...")
+                product_query = """
+                query getProduct($id: ID!) {
+                    product(id: $id) {
+                        id
+                        variants(first: 10) {
+                            edges {
+                                node {
+                                    id
+                                    sku
+                                    title
+                                }
+                            }
+                        }
+                    }
+                }
+                """
+                product_check_response = requests.post(
+                    self.graphql_url,
+                    headers=self.headers,
+                    json={
+                        'query': product_query,
+                        'variables': {'id': product_gid}
+                    },
+                    timeout=30
+                )
+                product_check_response.raise_for_status()
+                product_check_result = product_check_response.json()
+                
+                if 'data' in product_check_result:
+                    product_data_check = product_check_result['data'].get('product', {})
+                    variants_edges = product_data_check.get('variants', {}).get('edges', [])
+                    
+                    # Delete all existing variants (usually just the default one)
+                    for edge in variants_edges:
+                        variant_node = edge.get('node', {})
+                        variant_gid = variant_node.get('id')
+                        variant_sku = variant_node.get('sku', '')
+                        variant_title = variant_node.get('title', '')
+                        
+                        if variant_gid:
+                            print(f"Deleting existing variant: {variant_title} (SKU: {variant_sku}, GID: {variant_gid})")
+                            try:
+                                delete_mutation = """
+                                mutation productVariantDelete($id: ID!) {
+                                    productVariantDelete(id: $id) {
+                                        deletedProductVariantId
+                                        userErrors {
+                                            field
+                                            message
+                                        }
+                                    }
+                                }
+                                """
+                                delete_response = requests.post(
+                                    self.graphql_url,
+                                    headers=self.headers,
+                                    json={
+                                        'query': delete_mutation,
+                                        'variables': {'id': variant_gid}
+                                    },
+                                    timeout=30
+                                )
+                                delete_response.raise_for_status()
+                                delete_result = delete_response.json()
+                                
+                                if 'errors' in delete_result:
+                                    print(f"Warning: Error deleting variant {variant_gid}: {delete_result['errors']}")
+                                else:
+                                    delete_data = delete_result.get('data', {}).get('productVariantDelete', {})
+                                    user_errors = delete_data.get('userErrors', [])
+                                    if user_errors:
+                                        print(f"Warning: User errors deleting variant: {user_errors}")
+                                    else:
+                                        print(f"✅ Deleted default variant: {variant_gid}")
+                                
+                                time.sleep(0.1)
+                            except Exception as delete_e:
+                                print(f"Warning: Could not delete variant {variant_gid}: {delete_e}")
+            except Exception as e:
+                print(f"Warning: Could not check/delete default variant: {e}")
+            
             # Step 2: Get location ID for inventory
             location_id = None
             try:
