@@ -1781,7 +1781,7 @@ class ShopifyClient:
             print(f"   Adding {len(remaining_variants)} remaining variants using REST API...")
             print(f"   Sample remaining variant: {remaining_variants[0] if remaining_variants else 'None'}")
             
-            for idx, v_data in enumerate(variants_data):
+            for idx, v_data in enumerate(remaining_variants):
                 option1 = str(v_data.get('option1', '')).strip()
                 option2 = str(v_data.get('option2', '')).strip()
                 option3 = str(v_data.get('option3', '')).strip()
@@ -1838,7 +1838,7 @@ class ShopifyClient:
                         })
                         
                     if (idx + 1) % 50 == 0:
-                        print(f"   ✅ Added {idx + 1}/{len(remaining_variants)} remaining variants (total: {idx + 2}/{len(variants_data)})")
+                        print(f"   ✅ Progress: {len(created_variants)}/{len(remaining_variants)} remaining variants added")
                     else:
                         print(f"   ⚠️ Variant {idx+1} ({sku}): No ID returned")
                     
