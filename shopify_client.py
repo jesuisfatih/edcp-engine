@@ -821,47 +821,46 @@ class ShopifyClient:
                 
                 if len(variant_images_map) == 0:
                     print(f"⚠️ WARNING: No variant images found in product_data!")
-                    print(f"   Checking first variant: {unique_variants[0] if unique_variants else 'N/A'}")
                 
-                # CRITICAL FIX: productVariantCreate is deprecated in 2024-10+
-                # Use productVariantsBulkCreate instead (supports batch creation)
-                print(f"Creating {len(unique_variants)} variants using productVariantsBulkCreate...")
+                # Batch processing: 50 variants per batch
+                print(f"Creating {len(unique_variants)} variants in batches of 50...")
                 
-                # Prepare all variant inputs for bulk creation
-                bulk_variant_inputs = []
-                for idx, variant_input in enumerate(unique_variants):
-                    variant_sku = variant_input.get('sku', f'variant-{idx+1}')
+                batch_size = 50
+                total_batches = (len(unique_variants) + batch_size - 1) // batch_size
+                all_created_variants = []
+                
+                for batch_idx in range(total_batches):
+                    start_idx = batch_idx * batch_size
+                    end_idx = min(start_idx + batch_size, len(unique_variants))
+                    batch_variants = unique_variants[start_idx:end_idx]
                     
-                    # CRITICAL: ProductVariantsBulkInput supports: price, barcode, optionValues
-                    # optionValues format: [{'name': 'Red', 'optionName': 'Color'}, {'name': 'M', 'optionName': 'Size'}]
-                    # It does NOT support: sku, weight, weightUnit, selectedOptions, options, inventoryQuantities, inventoryPolicy
-                    variant_payload = {
-                        'price': variant_input.get('price', '0'),
-                        'barcode': variant_input.get('barcode') or None
-                    }
+                    print(f"📦 Batch {batch_idx + 1}/{total_batches}: Processing {len(batch_variants)} variants...")
                     
-                    # CRITICAL: Convert selectedOptions to optionValues array
-                    # selectedOptions format: [{'name': 'Color', 'value': 'Red'}, {'name': 'Size', 'value': 'M'}]
-                    # optionValues format: [{'name': 'Red', 'optionName': 'Color'}, {'name': 'M', 'optionName': 'Size'}]
-                    if variant_input.get('selectedOptions'):
-                        option_values = []
-                        for opt in variant_input['selectedOptions']:
-                            if opt.get('name') and opt.get('value'):
-                                option_values.append({
-                                    'name': opt['value'],  # value becomes name
-                                    'optionName': opt['name']  # name becomes optionName
-                                })
-                        if option_values:
-                            variant_payload['optionValues'] = option_values
-                        else:
-                            print(f"WARNING: Variant {variant_sku} has empty selectedOptions, skipping optionValues")
-                    else:
-                        print(f"CRITICAL ERROR: Variant {variant_sku} has no selectedOptions, cannot create variant without options")
-                    
-                            bulk_variant_inputs.append(variant_payload)
+                    # Prepare variant inputs for this batch
+                    bulk_variant_inputs = []
+                    for idx, variant_input in enumerate(batch_variants):
+                        variant_sku = variant_input.get('sku', f'variant-{start_idx + idx + 1}')
+                        
+                        variant_payload = {
+                            'price': variant_input.get('price', '0'),
+                            'barcode': variant_input.get('barcode') or None
+                        }
+                        
+                        # Convert selectedOptions to optionValues
+                        if variant_input.get('selectedOptions'):
+                            option_values = []
+                            for opt in variant_input['selectedOptions']:
+                                if opt.get('name') and opt.get('value'):
+                                    option_values.append({
+                                        'name': opt['value'],
+                                        'optionName': opt['name']
+                                    })
+                            if option_values:
+                                variant_payload['optionValues'] = option_values
+                                bulk_variant_inputs.append(variant_payload)
                     
                     if not bulk_variant_inputs:
-                        print(f"⚠️ No valid variants in batch {batch_idx + 1}, skipping...")
+                        print(f"⚠️ Batch {batch_idx + 1}: No valid variants, skipping...")
                         continue
                     
                     # Use productVariantsBulkCreate mutation
