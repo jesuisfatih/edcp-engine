@@ -167,8 +167,26 @@ class SyncManager:
                     variants = grouper.get_variants_for_group(group_id)
                     images = grouper.get_images_for_group(group_id)
                     
+                    print(f"📋 Group {group_id}: {len(variants)} variants, {len(images)} images from database")
+                    
+                    if not variants or len(variants) == 0:
+                        print(f"❌ ERROR: Group {group_id} has NO variants! Skipping...")
+                        self.stats['errors'] += 1
+                        self.errors.append({
+                            'sku': group_id,
+                            'error': 'No variants found in database for this group',
+                            'timestamp': datetime.now().isoformat()
+                        })
+                        continue
+                    
                     # Build Shopify product data
                     product_data = self._build_product_data_from_group(group, variants, images)
+                    
+                    # CRITICAL: Validate product_data before sending
+                    if not product_data.get('variants') or len(product_data['variants']) == 0:
+                        print(f"❌ ERROR: Product data has NO variants after building! Skipping...")
+                        self.stats['errors'] += 1
+                        continue
                     
                     # Sync to Shopify
                     self._sync_product_from_group(group_id, product_data, variants)
@@ -565,26 +583,45 @@ class SyncManager:
     
     def _build_product_data_from_group(self, group: Dict, variants: List[Dict], images: List[Dict]) -> Dict:
         """Build Shopify product data from database group"""
+        print(f"🔨 Building product data for group: {group.get('title', 'N/A')}")
+        print(f"   Variants from DB: {len(variants)}")
+        print(f"   Images from DB: {len(images)}")
+        
         # Build variants list
         variant_list = []
         variant_images_map = {}
         
-        for variant in variants:
+        for idx, variant in enumerate(variants):
+            # CRITICAL: Ensure option1 and option2 are never empty
+            color_name = variant.get('color_name', '').strip()
+            size_name = variant.get('size_name', '').strip()
+            sku = variant.get('sku', '').strip()
+            
+            # Fallback if empty
+            if not color_name:
+                color_name = f"Color-{sku}" if sku else f"Color-{idx+1}"
+            if not size_name:
+                size_name = f"Size-{sku}" if sku else f"Size-{idx+1}"
+            
             variant_data = {
-                'sku': variant.get('sku', ''),
+                'sku': sku,
                 'price': variant.get('price', '0'),
                 'inventory_quantity': variant.get('inventory_quantity'),
-                'option1': variant.get('color_name', ''),
-                'option2': variant.get('size_name', ''),
+                'option1': color_name,  # Color
+                'option2': size_name,    # Size
                 'barcode': variant.get('barcode'),
-                'weight': variant.get('weight', 0),
-                'weight_unit': variant.get('weight_unit', 'lb')
+                'weight': variant.get('weight', 0) or 0,
+                'weight_unit': variant.get('weight_unit', 'lb') or 'lb'
             }
             
             # Add variant image
-            if variant.get('variant_image_url'):
-                variant_data['image'] = variant['variant_image_url']
-                variant_images_map[variant.get('sku', '')] = variant['variant_image_url']
+            variant_image_url = variant.get('variant_image_url', '').strip()
+            if variant_image_url:
+                variant_data['image'] = variant_image_url
+                variant_images_map[sku] = variant_image_url
+                print(f"   Variant {idx+1} (SKU: {sku}) has image: {variant_image_url[:50]}...")
+            else:
+                print(f"   ⚠️ Variant {idx+1} (SKU: {sku}) has NO image")
             
             # Add variant metafields
             if variant.get('variant_metafields'):
@@ -592,8 +629,14 @@ class SyncManager:
             
             variant_list.append(variant_data)
         
+        print(f"✅ Built {len(variant_list)} variants (with images: {len(variant_images_map)})")
+        
         # Build product images
-        product_images = [img['image_url'] for img in images if img.get('image_type') == 'product']
+        product_images = [img['image_url'] for img in images if img.get('image_type') == 'product' and img.get('image_url')]
+        print(f"✅ Built {len(product_images)} product images")
+        
+        if not product_images:
+            print(f"⚠️ WARNING: No product images found in database for group {group.get('group_id')}")
         
         # Build collections (if needed)
         collections = []
@@ -624,6 +667,10 @@ class SyncManager:
                 except Exception:
                     pass
         
+        # CRITICAL VALIDATION: Must have at least 1 variant
+        if not variant_list or len(variant_list) == 0:
+            raise Exception(f"CRITICAL ERROR: Product {group.get('title')} has NO variants! Cannot create product without variants.")
+        
         # Build product data
         product_data = {
             'title': group.get('title', 'Product'),
@@ -632,11 +679,28 @@ class SyncManager:
             'product_type': group.get('product_type', ''),
             'tags': group.get('tags', ''),
             'status': 'active' if self.sync_options.get('set_active', True) else 'draft',
-            'images': product_images,
-            'variants': variant_list,
+            'images': product_images if product_images else [],  # Ensure it's a list
+            'variants': variant_list,  # CRITICAL: Must have variants
             'collections': collections,
-            'metafields': group.get('product_metafields', {})
+            'metafields': group.get('product_metafields', {}) if isinstance(group.get('product_metafields'), dict) else {}
         }
+        
+        # CRITICAL DEBUG: Log what we're sending to Shopify
+        print(f"📦 Final product data for Shopify:")
+        print(f"   Title: {product_data['title']}")
+        print(f"   Variants: {len(product_data['variants'])}")
+        print(f"   Images: {len(product_data['images'])}")
+        print(f"   Metafields: {len(product_data.get('metafields', {}))}")
+        print(f"   Collections: {len(product_data['collections'])}")
+        
+        # Validate variant data
+        for idx, v in enumerate(product_data['variants']):
+            if not v.get('option1') and not v.get('option2'):
+                print(f"⚠️ WARNING: Variant {idx+1} (SKU: {v.get('sku', 'N/A')}) has no options!")
+            if not v.get('sku'):
+                print(f"⚠️ WARNING: Variant {idx+1} has no SKU!")
+            if not v.get('price'):
+                print(f"⚠️ WARNING: Variant {idx+1} (SKU: {v.get('sku', 'N/A')}) has no price!")
         
         return product_data
     
@@ -666,25 +730,33 @@ class SyncManager:
         else:
             # Create new product
             if self.sync_options.get('create_new', True):
+                print(f"🆕 Creating NEW product: {product_data['title']}")
+                print(f"   Variants to create: {len(product_data.get('variants', []))}")
+                print(f"   Images to add: {len(product_data.get('images', []))}")
+                
                 result = self.shopify_client.create_product(product_data)
                 
                 if result.get('status') == 'exists':
                     # Product already exists, update it
-                    print(f"Product already exists, updating: {result['id']}")
+                    print(f"⚠️ Product already exists, updating: {result['id']}")
                     self.shopify_client.update_product(result['id'], product_data)
                     self.stats['updated'] += 1
                 else:
                     # New product created
+                    print(f"✅ Product created successfully: ID={result.get('id')}, Variants created: {len(result.get('variants', []))}")
                     self.stats['created'] += 1
                     
                     # Save to database for rollback
                     shopify_variants = result.get('variants', [])
                     if shopify_variants:
+                        print(f"   Saving {len(shopify_variants)} variants to sync history...")
                         for variant in shopify_variants:
                             variant_id = variant.get('id') if isinstance(variant, dict) else None
                             variant_sku = variant.get('sku', '') if isinstance(variant, dict) else ''
                             if variant_id and variant_sku:
                                 save_sync_product(self.sync_id, result['id'], variant_id, variant_sku, 'created')
+                    else:
+                        print(f"⚠️ WARNING: Product created but no variants returned from Shopify!")
                     
                     # Update group with Shopify product ID
                     self._update_group_shopify_id(group_id, result['id'])
