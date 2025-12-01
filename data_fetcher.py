@@ -35,6 +35,7 @@ class DataFetcher:
         style_ids = sorted({p.get("styleID") for p in products if p.get("styleID")})
         style_lookup = {}
         category_lookup = {}
+        brand_lookup = {}
         if style_ids:
             try:
                 styleid_param = ",".join([str(sid) for sid in style_ids])
@@ -56,6 +57,16 @@ class DataFetcher:
             print(f"[fetch] Category lookup loaded: {len(category_lookup)}")
         except Exception as e:
             print(f"[fetch] Warning: could not fetch categories: {e}")
+        # Brand lookup
+        try:
+            brands = self.ss_client.get_brands()
+            for b in brands or []:
+                bid = b.get("brandID")
+                if bid is not None:
+                    brand_lookup[str(bid)] = b.get("name", "").strip()
+            print(f"[fetch] Brand lookup loaded: {len(brand_lookup)}")
+        except Exception as e:
+            print(f"[fetch] Warning: could not fetch brands: {e}")
 
         def normalize_image(path: Optional[str]) -> Optional[str]:
             """Build full URL and prefer large size; return None if empty."""
@@ -120,6 +131,12 @@ class DataFetcher:
                                 cat_names.append(name)
                     if cat_names:
                         enriched["categoryNames"] = cat_names
+
+                    # Brand name normalization from lookup if empty
+                    if not enriched.get("brandName") and brand_lookup:
+                        bid = enriched.get("brandID") or enriched.get("brandId") or enriched.get("brandid")
+                        if bid and brand_lookup.get(str(bid)):
+                            enriched["brandName"] = brand_lookup[str(bid)]
 
                     # Store full product data as JSON
                     product_json = json.dumps(enriched)
