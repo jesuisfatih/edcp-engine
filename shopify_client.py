@@ -999,6 +999,10 @@ class ShopifyClient:
                             error_details = f"GraphQL errors for variant {variant_sku} ({idx+1}/{len(unique_variants)}): {', '.join(error_messages)}"
                             print(f"❌ {error_details}")
                             print(f"   Payload was: {variant_payload}")
+                            print(f"   Full response: {variant_result}")
+                            # Always log first 10 errors to understand the pattern
+                            if failed_count < 10:
+                                print(f"   Full variant_input: {variant_input}")
                             failed_count += 1
                             continue
                         
@@ -1010,6 +1014,10 @@ class ShopifyClient:
                             error_details = f"User errors for variant {variant_sku} ({idx+1}/{len(unique_variants)}): {', '.join(error_messages)}"
                             print(f"❌ {error_details}")
                             print(f"   Payload was: {variant_payload}")
+                            print(f"   Full response: {variant_result}")
+                            # Always log first 10 errors to understand the pattern
+                            if failed_count < 10:
+                                print(f"   Full variant_input: {variant_input}")
                             failed_count += 1
                             continue
                         
