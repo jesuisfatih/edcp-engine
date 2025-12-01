@@ -1250,13 +1250,28 @@ class ShopifyClient:
         """DEPRECATED: REST API method - kept for fallback only (not used)"""
         raise Exception("REST API method is deprecated. Use GraphQL instead.")
     
+
     def update_product(self, product_id: int, product_data: Dict) -> Dict:
         """Update existing product using GraphQL API"""
         try:
             product_gid = f"gid://shopify/Product/{product_id}"
-            
-            print(f"🔄 Updating product {product_id} using GraphQL API...")
-            
+            print(f"[update] Updating product {product_id} using GraphQL API...")
+
+            # Preprocess incoming variants for images/metafields mapping
+            variant_images_map = {}
+            variant_metafields_map = {}
+            variants_input = product_data.get('variants', []) or []
+            for v in variants_input:
+                sku = str(v.get('sku', '')).strip()
+                if not sku:
+                    continue
+                image_url = v.get('image') or v.get('_image') or v.get('variant_image_url')
+                if image_url:
+                    variant_images_map[sku] = image_url
+                metafields = v.get('metafields') or v.get('_metafields') or v.get('variant_metafields')
+                if metafields:
+                    variant_metafields_map[sku] = metafields
+
             # Step 1: Update product basic info
             if any(key in product_data for key in ['title', 'description', 'vendor', 'product_type', 'tags', 'status']):
                 update_mutation = """
@@ -1273,7 +1288,7 @@ class ShopifyClient:
                     }
                 }
                 """
-                
+
                 product_input = {}
                 if 'title' in product_data:
                     product_input['id'] = product_gid
@@ -1292,7 +1307,7 @@ class ShopifyClient:
                         product_input['tags'] = product_data['tags']
                 if 'status' in product_data:
                     product_input['status'] = product_data['status'].upper()
-                
+
                 if product_input:
                     product_input['id'] = product_gid
                     response = requests.post(
@@ -1303,28 +1318,33 @@ class ShopifyClient:
                     )
                     response.raise_for_status()
                     result = response.json()
-                    
+
                     if 'errors' in result:
                         error_messages = [e.get('message', str(e)) for e in result['errors']]
                         raise Exception(f"GraphQL errors updating product: {', '.join(error_messages)}")
-                    
+
                     product_update = result.get('data', {}).get('productUpdate', {})
                     user_errors = product_update.get('userErrors', [])
                     if user_errors:
                         error_messages = [e.get('message', str(e)) for e in user_errors]
                         raise Exception(f"GraphQL user errors updating product: {', '.join(error_messages)}")
-                    
-                    print(f"✅ Product basic info updated")
+
+                    print("[update] Product basic info updated")
                     time.sleep(0.2)
-            
-            # Step 2: Get existing product variants
+
+            # Step 2: Get existing product variants (with pagination)
             existing_variants = {}
+            variant_lookup_by_sku = {}
             try:
                 get_product_query = """
-                query getProduct($id: ID!) {
+                query getProduct($id: ID!, $cursor: String) {
                     product(id: $id) {
                         id
-                        variants(first: 250) {
+                        variants(first: 250, after: $cursor) {
+                            pageInfo {
+                                hasNextPage
+                                endCursor
+                            }
                             edges {
                                 node {
                                     id
@@ -1339,41 +1359,52 @@ class ShopifyClient:
                     }
                 }
                 """
-                
-                get_response = requests.post(
-                    self.graphql_url,
-                    headers=self.headers,
-                    json={'query': get_product_query, 'variables': {'id': product_gid}},
-                    timeout=30
-                )
-                get_response.raise_for_status()
-                get_result = get_response.json()
-                
-                if 'data' in get_result and get_result['data'].get('product'):
-                    variants_edges = get_result['data']['product'].get('variants', {}).get('edges', [])
-                    for edge in variants_edges:
-                        variant_node = edge.get('node', {})
-                        variant_gid = variant_node.get('id', '')
-                        variant_sku = variant_node.get('sku', '').strip()
-                        selected_options = variant_node.get('selectedOptions', [])
-                        
-                        # Create a key from selectedOptions for matching
-                        option_key = tuple(sorted([f"{opt.get('name')}:{opt.get('value')}" for opt in selected_options]))
-                        existing_variants[variant_gid] = {
-                            'sku': variant_sku,
-                            'options': option_key,
-                            'selectedOptions': selected_options
-                        }
-                
-                print(f"📋 Found {len(existing_variants)} existing variants")
+
+                cursor = None
+                total_variants_fetched = 0
+                while True:
+                    get_response = requests.post(
+                        self.graphql_url,
+                        headers=self.headers,
+                        json={'query': get_product_query, 'variables': {'id': product_gid, 'cursor': cursor}},
+                        timeout=30
+                    )
+                    get_response.raise_for_status()
+                    get_result = get_response.json()
+
+                    if 'data' in get_result and get_result['data'].get('product'):
+                        variants_edges = get_result['data']['product'].get('variants', {}).get('edges', [])
+                        for edge in variants_edges:
+                            variant_node = edge.get('node', {})
+                            variant_gid = variant_node.get('id', '')
+                            variant_sku = variant_node.get('sku', '').strip()
+                            selected_options = variant_node.get('selectedOptions', [])
+
+                            option_key = tuple(sorted([f"{opt.get('name')}:{opt.get('value')}" for opt in selected_options]))
+                            existing_variants[variant_gid] = {
+                                'sku': variant_sku,
+                                'options': option_key,
+                                'selectedOptions': selected_options
+                            }
+                            if variant_sku:
+                                variant_lookup_by_sku[variant_sku.lower()] = variant_gid
+                            total_variants_fetched += 1
+
+                        page_info = get_result['data']['product'].get('variants', {}).get('pageInfo', {})
+                        if page_info.get('hasNextPage') and page_info.get('endCursor'):
+                            cursor = page_info.get('endCursor')
+                            continue
+
+                    break
+
+                print(f"[update] Found {len(existing_variants)} existing variants (fetched {total_variants_fetched})")
             except Exception as e:
-                print(f"⚠️ Warning: Could not fetch existing variants: {e}")
-            
+                print(f"[update] Warning: Could not fetch existing variants: {e}")
+
             # Step 3: Update or create variants
-            if 'variants' in product_data and product_data['variants']:
-                variants_to_update = product_data['variants']
-                print(f"🔄 Processing {len(variants_to_update)} variants for update...")
-                
+            if variants_input:
+                print(f"[update] Processing {len(variants_input)} variants for update...")
+
                 # Get location ID for inventory
                 location_id = None
                 try:
@@ -1401,19 +1432,19 @@ class ShopifyClient:
                         if locations:
                             location_id = locations[0]['node']['id']
                 except Exception as e:
-                    print(f"⚠️ Warning: Could not fetch location ID: {e}")
-                
+                    print(f"[update] Warning: Could not fetch location ID: {e}")
+
                 updated_count = 0
                 created_count = 0
                 failed_count = 0
-                
-                for variant_data in variants_to_update:
+                variant_records = []  # Track variant GIDs/SKUs after update/create for images/metafields
+
+                for variant_data in variants_input:
                     variant_sku = variant_data.get('sku', '').strip()
                     option1 = variant_data.get('option1', '').strip()
                     option2 = variant_data.get('option2', '').strip()
                     option3 = variant_data.get('option3', '').strip()
-                    
-                    # Build selectedOptions for matching
+
                     new_selected_options = []
                     if option1:
                         new_selected_options.append({'name': 'Color', 'value': option1})
@@ -1421,41 +1452,32 @@ class ShopifyClient:
                         new_selected_options.append({'name': 'Size', 'value': option2})
                     if option3:
                         new_selected_options.append({'name': 'Style', 'value': option3})
-                    
+
                     new_option_key = tuple(sorted([f"{opt.get('name')}:{opt.get('value')}" for opt in new_selected_options]))
-                    
-                    # Try to find existing variant
+
                     matching_variant_gid = None
                     for existing_gid, existing_info in existing_variants.items():
                         existing_sku = existing_info.get('sku', '').strip()
                         existing_option_key = existing_info.get('options', ())
-                        
-                        # Match by SKU first
                         if variant_sku and existing_sku and variant_sku == existing_sku:
                             matching_variant_gid = existing_gid
                             break
-                        # Match by options
                         elif new_option_key and existing_option_key == new_option_key:
                             matching_variant_gid = existing_gid
                             break
-                    
+                    if not matching_variant_gid and variant_sku:
+                        matching_variant_gid = variant_lookup_by_sku.get(variant_sku.lower())
+
                     if matching_variant_gid:
-                        # Update existing variant
                         variant_update_mutation = """
                         mutation productVariantUpdate($input: ProductVariantInput!) {
                             productVariantUpdate(input: $input) {
-                                productVariant {
-                                    id
-                                    sku
-                                }
-                                userErrors {
-                                    field
-                                    message
-                                }
+                                productVariant { id sku }
+                                userErrors { field message }
                             }
                         }
                         """
-                        
+
                         variant_input = {'id': matching_variant_gid}
                         if 'price' in variant_data:
                             variant_input['price'] = str(variant_data.get('price', '0'))
@@ -1466,60 +1488,54 @@ class ShopifyClient:
                         if 'weight' in variant_data:
                             variant_input['weight'] = variant_data.get('weight', 0)
                             variant_input['weightUnit'] = self._normalize_weight_unit(variant_data.get('weight_unit'))
-                        
+
                         if location_id and variant_data.get('inventory_quantity') is not None:
                             variant_input['inventoryQuantities'] = [{
                                 'availableQuantity': variant_data.get('inventory_quantity', 0) or 0,
                                 'locationId': location_id
                             }]
-                        
+
                         try:
                             update_response = requests.post(
                                 self.graphql_url,
                                 headers=self.headers,
-                                json={
-                                    'query': variant_update_mutation,
-                                    'variables': {'input': variant_input}
-                                },
+                                json={'query': variant_update_mutation, 'variables': {'input': variant_input}},
                                 timeout=30
                             )
                             update_response.raise_for_status()
                             update_result = update_response.json()
-                            
+
                             if 'errors' in update_result:
-                                print(f"❌ Error updating variant {variant_sku}: {update_result['errors']}")
+                                print(f"[update] Error updating variant {variant_sku}: {update_result['errors']}")
                                 failed_count += 1
                             else:
                                 user_errors = update_result.get('data', {}).get('productVariantUpdate', {}).get('userErrors', [])
                                 if user_errors:
-                                    print(f"❌ User errors updating variant {variant_sku}: {user_errors}")
+                                    print(f"[update] User errors updating variant {variant_sku}: {user_errors}")
                                     failed_count += 1
                                 else:
                                     updated_count += 1
+                                    variant_node = update_result.get('data', {}).get('productVariantUpdate', {}).get('productVariant', {})
+                                    variant_gid_updated = variant_node.get('id', matching_variant_gid)
+                                    variant_sku_updated = variant_node.get('sku', variant_sku)
+                                    variant_records.append({'gid': variant_gid_updated, 'sku': variant_sku_updated or variant_sku})
                                     if updated_count <= 3 or updated_count % 10 == 0:
-                                        print(f"✅ Variant {variant_sku} updated ({updated_count}/{len(variants_to_update)})")
-                            
+                                        print(f"[update] Variant {variant_sku} updated ({updated_count}/{len(variants_input)})")
+
                             time.sleep(0.1)
                         except Exception as e:
-                            print(f"❌ Exception updating variant {variant_sku}: {e}")
+                            print(f"[update] Exception updating variant {variant_sku}: {e}")
                             failed_count += 1
                     else:
-                        # Create new variant
                         variant_create_mutation = """
                         mutation productVariantCreate($productId: ID!, $variant: ProductVariantInput!) {
                             productVariantCreate(productId: $productId, variant: $variant) {
-                                productVariant {
-                                    id
-                                    sku
-                                }
-                                userErrors {
-                                    field
-                                    message
-                                }
+                                productVariant { id sku }
+                                userErrors { field message }
                             }
                         }
                         """
-                        
+
                         variant_input = {
                             'price': str(variant_data.get('price', '0')),
                             'sku': variant_sku if variant_sku else None,
@@ -1527,70 +1543,159 @@ class ShopifyClient:
                             'weight': variant_data.get('weight', 0) or 0,
                             'weightUnit': self._normalize_weight_unit(variant_data.get('weight_unit'))
                         }
-                        
+
                         if new_selected_options:
                             variant_input['selectedOptions'] = new_selected_options
                         else:
-                            # Default option if none provided
-                            variant_input['selectedOptions'] = [{'name': 'Title', 'value': variant_sku if variant_sku else f'Variant-{created_count+1}'}]
-                        
+                            variant_input['selectedOptions'] = [{'name': 'Title', 'value': variant_sku if variant_sku else f"Variant-{created_count+1}"}]
+
                         if location_id and variant_data.get('inventory_quantity') is not None:
                             variant_input['inventoryQuantities'] = [{
                                 'availableQuantity': variant_data.get('inventory_quantity', 0) or 0,
                                 'locationId': location_id
                             }]
-                        
+
                         try:
                             create_response = requests.post(
                                 self.graphql_url,
                                 headers=self.headers,
-                                json={
-                                    'query': variant_create_mutation,
-                                    'variables': {
-                                        'productId': product_gid,
-                                        'variant': variant_input
-                                    }
-                                },
+                                json={'query': variant_create_mutation, 'variables': {'productId': product_gid, 'variant': variant_input}},
                                 timeout=30
                             )
                             create_response.raise_for_status()
                             create_result = create_response.json()
-                            
+
                             if 'errors' in create_result:
-                                print(f"❌ Error creating variant {variant_sku}: {create_result['errors']}")
+                                print(f"[update] Error creating variant {variant_sku}: {create_result['errors']}")
                                 failed_count += 1
                             else:
                                 user_errors = create_result.get('data', {}).get('productVariantCreate', {}).get('userErrors', [])
                                 if user_errors:
-                                    print(f"❌ User errors creating variant {variant_sku}: {user_errors}")
+                                    print(f"[update] User errors creating variant {variant_sku}: {user_errors}")
                                     failed_count += 1
                                 else:
                                     created_count += 1
+                                    variant_node = create_result.get('data', {}).get('productVariantCreate', {}).get('productVariant', {})
+                                    variant_records.append({'gid': variant_node.get('id'), 'sku': variant_node.get('sku', variant_sku)})
                                     if created_count <= 3 or created_count % 10 == 0:
-                                        print(f"✅ Variant {variant_sku} created ({created_count} new variants)")
-                            
+                                        print(f"[update] Variant {variant_sku} created ({created_count} new variants)")
+
                             time.sleep(0.1)
                         except Exception as e:
-                            print(f"❌ Exception creating variant {variant_sku}: {e}")
+                            print(f"[update] Exception creating variant {variant_sku}: {e}")
                             failed_count += 1
-                
-                print(f"📊 Variant update summary: {updated_count} updated, {created_count} created, {failed_count} failed")
-            
-            # Step 4: Update images if provided
+
+                print(f"[update] Variant update summary: {updated_count} updated, {created_count} created, {failed_count} failed")
+
+            # Step 4: Add product-level images (append; no delete)
             if 'images' in product_data and product_data['images']:
-                # Note: Image updates are complex, for now we'll skip or add them as new images
-                print(f"⚠️ Image updates not yet implemented in update_product (product has {len(product_data['images'])} images)")
-            
-            # Step 5: Update metafields if provided
+                print(f"[update] Adding {len(product_data['images'])} product images during update...")
+                image_mutation = """
+                mutation productImageCreate($input: ImageInput!) {
+                    productImageCreate(input: $input) {
+                        image { id src }
+                        userErrors { field message }
+                    }
+                }
+                """
+                added_images = 0
+                for idx, img_url in enumerate(product_data['images']):
+                    if not img_url or not str(img_url).strip():
+                        continue
+                    try:
+                        image_response = requests.post(
+                            self.graphql_url,
+                            headers=self.headers,
+                            json={'query': image_mutation, 'variables': {'input': {'productId': product_gid, 'src': str(img_url).strip()}}},
+                            timeout=30
+                        )
+                        image_response.raise_for_status()
+                        image_result = image_response.json()
+                        user_errors = image_result.get('data', {}).get('productImageCreate', {}).get('userErrors', [])
+                        if user_errors:
+                            print(f"[update] User errors adding product image {idx+1}: {user_errors}")
+                        else:
+                            added_images += 1
+                    except Exception as e:
+                        print(f"[update] Could not add product image {idx+1}: {e}")
+                    time.sleep(0.1)
+                print(f"[update] Product images added: {added_images}/{len(product_data['images'])}")
+
+            # Step 5: Add variant-specific images (append)
+            if variant_images_map and 'variant_records' in locals() and variant_records:
+                print(f"[update] Linking images to {len(variant_images_map)} variants during update...")
+                image_mutation = """
+                mutation productImageCreate($input: ImageInput!) {
+                    productImageCreate(input: $input) {
+                        image { id src }
+                        userErrors { field message }
+                    }
+                }
+                """
+                linked = 0
+                for variant_sku, image_url in variant_images_map.items():
+                    if not image_url:
+                        continue
+                    matching_variant = None
+                    for rec in variant_records:
+                        rec_sku = (rec.get('sku') or '').strip()
+                        if rec_sku and variant_sku and rec_sku.lower() == variant_sku.lower():
+                            matching_variant = rec
+                            break
+                    if not matching_variant:
+                        continue
+
+                    variant_gid = matching_variant.get('gid')
+                    if not variant_gid:
+                        continue
+
+                    try:
+                        image_response = requests.post(
+                            self.graphql_url,
+                            headers=self.headers,
+                            json={'query': image_mutation, 'variables': {'input': {'productId': product_gid, 'src': str(image_url).strip(), 'variantIds': [variant_gid]}}},
+                            timeout=30
+                        )
+                        image_response.raise_for_status()
+                        image_result = image_response.json()
+                        user_errors = image_result.get('data', {}).get('productImageCreate', {}).get('userErrors', [])
+                        if user_errors:
+                            print(f"[update] User errors adding variant image for SKU {variant_sku}: {user_errors}")
+                        else:
+                            linked += 1
+                    except Exception as e:
+                        print(f"[update] Could not add variant image for SKU {variant_sku}: {e}")
+                    time.sleep(0.1)
+                print(f"[update] Variant images linked: {linked}/{len(variant_images_map)}")
+
+            # Step 6: Update product metafields if provided
             if 'metafields' in product_data and product_data['metafields']:
-                print(f"🔄 Updating {len(product_data['metafields'])} product metafields...")
+                print(f"[update] Updating {len(product_data['metafields'])} product metafields...")
                 self._add_product_metafields(product_gid, product_data['metafields'])
-            
-            return {
-                'id': product_id,
-                'status': 'updated'
-            }
-            
+
+            # Step 7: Update variant metafields if provided
+            if variant_metafields_map and 'variant_records' in locals() and variant_records:
+                print(f"[update] Updating variant metafields for {len(variant_metafields_map)} variants...")
+                for variant_sku, metafields in variant_metafields_map.items():
+                    if not metafields:
+                        continue
+
+                    matching_variant = None
+                    for rec in variant_records:
+                        rec_sku = (rec.get('sku') or '').strip()
+                        if rec_sku and variant_sku and rec_sku.lower() == variant_sku.lower():
+                            matching_variant = rec
+                            break
+
+                    if not matching_variant:
+                        continue
+
+                    variant_gid = matching_variant.get('gid')
+                    if variant_gid and 'None' not in str(variant_gid):
+                        self._add_variant_metafields(variant_gid, metafields)
+
+            return {'id': product_id, 'status': 'updated'}
+
         except requests.exceptions.HTTPError as e:
             error_msg = f"HTTP Error updating product {product_id}: {e}"
             if hasattr(e, 'response') and e.response is not None:
@@ -1602,7 +1707,7 @@ class ShopifyClient:
             raise Exception(error_msg)
         except Exception as e:
             raise Exception(f"Failed to update product: {str(e)}")
-    
+
     def add_product_to_collection(self, product_id: int, collection_id: int):
         """Add product to collection - FIXED: Better error handling for 422"""
         try:
