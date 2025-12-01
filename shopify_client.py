@@ -675,15 +675,38 @@ class ShopifyClient:
             }
             """
             
-            option_names = []
-            if variants and any(v.get('option1') for v in variants):
-                option_names.append('Color')
-            if variants and any(v.get('option2') for v in variants):
-                option_names.append('Size')
-            if variants and any(v.get('option3') for v in variants):
-                option_names.append('Style')
-            if variants and not option_names:
-                option_names.append('Title')
+            # CRITICAL FIX: Extract product options from variants BEFORE creating product
+            # ProductVariantsBulkInput.optionValues[].optionName must reference existing product options
+            # We need to define product options in productCreate, otherwise variant creation will fail
+            option_map = {}  # {'Color': {'Red', 'Blue', ...}, 'Size': {'S', 'M', 'L', ...}}
+            
+            for variant_data in variants:
+                # option1 = Color, option2 = Size, option3 = Style (if exists)
+                option1 = (variant_data.get('option1') or '').strip()
+                option2 = (variant_data.get('option2') or '').strip()
+                option3 = (variant_data.get('option3') or '').strip()
+                
+                if option1:
+                    option_map.setdefault('Color', set()).add(option1)
+                if option2:
+                    option_map.setdefault('Size', set()).add(option2)
+                if option3:
+                    option_map.setdefault('Style', set()).add(option3)
+            
+            # Build product options array: [{'name': 'Color', 'values': ['Red', 'Blue']}, ...]
+            product_options = []
+            for option_name, values_set in option_map.items():
+                if values_set:
+                    product_options.append({
+                        'name': option_name,
+                        'values': sorted(list(values_set))  # Sort for consistency
+                    })
+            
+            # If no options found, create a default "Title" option
+            if not product_options and variants:
+                product_options = [{'name': 'Title', 'values': ['Default']}]
+            
+            print(f"📋 Product options to create: {[opt['name'] for opt in product_options]}")
 
             # Normalize tags (accept str or list)
             raw_tags = product_data.get('tags', [])
@@ -694,9 +717,8 @@ class ShopifyClient:
             else:
                 tags = []
 
-            # CRITICAL FIX: Do NOT define productOptions in productCreate
-            # Shopify will auto-detect options from variants' selectedOptions
-            # If we define productOptions here, Shopify creates a default variant that requires option values
+            # CRITICAL FIX: Define product options in productCreate
+            # ProductVariantsBulkInput.optionValues[].optionName requires these options to exist
             product_input = {
                 'title': product_data.get('title', 'Product'),
                 'descriptionHtml': product_data.get('description', '') or '',
@@ -704,8 +726,12 @@ class ShopifyClient:
                 'productType': product_data.get('product_type', '') or '',
                 'tags': tags,
                 'status': product_data.get('status', 'ACTIVE').upper()
-                # DO NOT include productOptions here - Shopify will auto-detect from variants
             }
+            
+            # Add product options if we have any
+            if product_options:
+                product_input['options'] = product_options
+                print(f"✅ Product will be created with {len(product_options)} option(s): {[opt['name'] for opt in product_options]}")
             
             response = requests.post(
                 self.graphql_url,
@@ -903,25 +929,20 @@ class ShopifyClient:
                 # Shopify requires that all defined options have values in each variant
                 selected_options = []
                 
-                # Build selectedOptions based on what we defined in productOptions
+                # Build selectedOptions based on what we defined in productOptions (from option_map)
                 # We MUST provide values for ALL options defined in productOptions
-                for opt_name in option_names:
-                    if opt_name == 'Color':
-                        # Use option1 if available, otherwise use SKU-based fallback
-                        value = option1 if option1 else (f"Color-{sku[:8]}" if sku else f"Color-{len(unique_variants)+1}")
-                        selected_options.append({'name': 'Color', 'value': value})
-                    elif opt_name == 'Size':
-                        # Use option2 if available, otherwise use SKU-based fallback
-                        value = option2 if option2 else (f"Size-{sku[:8]}" if sku else f"Size-{len(unique_variants)+1}")
-                        selected_options.append({'name': 'Size', 'value': value})
-                    elif opt_name == 'Style':
-                        # Use option3 if available, otherwise use SKU-based fallback
-                        value = option3 if option3 else (f"Style-{sku[:8]}" if sku else f"Style-{len(unique_variants)+1}")
-                        selected_options.append({'name': 'Style', 'value': value})
-                    elif opt_name == 'Title':
-                        # Default option - use SKU or variant number
-                        value = sku if sku else f"Variant-{len(unique_variants)+1}"
-                        selected_options.append({'name': 'Title', 'value': value})
+                if 'Color' in option_map and option_map['Color']:
+                    # Use option1 if available, otherwise use SKU-based fallback
+                    value = option1 if option1 else (f"Color-{sku[:8]}" if sku else f"Color-{len(unique_variants)+1}")
+                    selected_options.append({'name': 'Color', 'value': value})
+                if 'Size' in option_map and option_map['Size']:
+                    # Use option2 if available, otherwise use SKU-based fallback
+                    value = option2 if option2 else (f"Size-{sku[:8]}" if sku else f"Size-{len(unique_variants)+1}")
+                    selected_options.append({'name': 'Size', 'value': value})
+                if 'Style' in option_map and option_map['Style']:
+                    # Use option3 if available, otherwise use SKU-based fallback
+                    value = option3 if option3 else (f"Style-{sku[:8]}" if sku else f"Style-{len(unique_variants)+1}")
+                    selected_options.append({'name': 'Style', 'value': value})
                 
                 # CRITICAL: Must have at least one option value
                 if not selected_options:
@@ -932,11 +953,8 @@ class ShopifyClient:
                 
                 # DEBUG: Log first few variants to verify option matching
                 if len(unique_variants) < 3:
-                    print(f"DEBUG: Variant {len(unique_variants)+1} - productOptions: {option_names}, selectedOptions: {selected_options}")
-                
-                # DEBUG: Log first few variants
-                if len(unique_variants) < 3:
-                    print(f"DEBUG: Variant {len(unique_variants)+1} selectedOptions: {selected_options}")
+                    option_names_list = list(option_map.keys())
+                    print(f"DEBUG: Variant {len(unique_variants)+1} - productOptions: {option_names_list}, selectedOptions: {selected_options}")
                 
                 if location_id and variant_data.get('inventory_quantity'):
                     variant_input['inventoryQuantities'] = [{
@@ -1860,14 +1878,14 @@ class ShopifyClient:
                             failed_count += 1
                     else:
                         # CRITICAL FIX: productVariantCreate is deprecated, use productVariantsBulkCreate
-                        # ProductVariantsBulkInput only supports: price, barcode, options (array of strings), inventoryQuantities, inventoryPolicy
-                        # It does NOT support: sku, weight, weightUnit, selectedOptions
+                        # ProductVariantsBulkInput supports: price, barcode, optionValues
+                        # optionValues format: [{'name': 'Red', 'optionName': 'Color'}, {'name': 'M', 'optionName': 'Size'}]
+                        # It does NOT support: sku, weight, weightUnit, selectedOptions, options (string array), inventoryQuantities, inventoryPolicy
                         variant_payload = {
                             'price': str(variant_data.get('price', '0')),
                             'barcode': variant_data.get('barcode', '') or None
                         }
 
-                        # Convert selectedOptions to options array (array of strings, not objects)
                         # Convert selectedOptions to optionValues array
                         # selectedOptions format: [{'name': 'Color', 'value': 'Red'}, {'name': 'Size', 'value': 'M'}]
                         # optionValues format: [{'name': 'Red', 'optionName': 'Color'}, {'name': 'M', 'optionName': 'Size'}]
