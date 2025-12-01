@@ -929,6 +929,19 @@ class SyncManager:
             if base_product.get('categories'):
                 metafields['categories'] = base_product['categories']
         
+        # CRITICAL VALIDATION: Must have at least 1 variant
+        if not variants or len(variants) == 0:
+            raise Exception(f"CRITICAL ERROR: Product {title} has NO variants! Cannot create product without variants. Check product data: {len(ss_products)} S&S products processed.")
+        
+        # CRITICAL VALIDATION: Check variant data structure
+        for idx, v in enumerate(variants):
+            if not v.get('option1') and not v.get('option2'):
+                print(f"WARNING: Variant {idx+1} (SKU: {v.get('sku', 'N/A')}) has no options!")
+            if not v.get('sku'):
+                print(f"WARNING: Variant {idx+1} has no SKU!")
+            if not v.get('price'):
+                print(f"WARNING: Variant {idx+1} (SKU: {v.get('sku', 'N/A')}) has no price!")
+        
         # Build product data
         # Note: Shopify requires 'options' to match variant option names
         # We'll let Shopify auto-detect from variant option1/option2
@@ -946,7 +959,15 @@ class SyncManager:
             # Don't specify 'options' - Shopify will auto-detect from variants
         }
         
-        print(f"Built product data: {title} with {len(variants)} variants, {len(images)} images, {len(metafields)} metafields")
+        # Detailed logging
+        variant_images_count = sum(1 for v in variants if v.get('image'))
+        variant_metafields_count = sum(1 for v in variants if v.get('metafields'))
+        
+        print(f"✅ Built product data: {title}")
+        print(f"   - Variants: {len(variants)} (with images: {variant_images_count}, with metafields: {variant_metafields_count})")
+        print(f"   - Product images: {len(images)}")
+        print(f"   - Product metafields: {len(metafields)}")
+        print(f"   - Collections: {len(collections)}")
         
         return product_data
     

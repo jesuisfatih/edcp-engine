@@ -1069,8 +1069,13 @@ class ShopifyClient:
             variants = product_data.get('variants', [])
             variant_count = len(variants)
             
-            print(f"Creating product with {variant_count} variants using GraphQL API.")
-            return self._create_product_with_graphql(product_data)
+            print(f"🚀 Creating product with {variant_count} variants using GraphQL API...")
+            print(f"   Product title: {product_data.get('title', 'N/A')}")
+            print(f"   Variants in data: {len(product_data.get('variants', []))}")
+            print(f"   Images in data: {len(product_data.get('images', []))}")
+            result = self._create_product_with_graphql(product_data)
+            print(f"✅ Product creation result: {result.get('status', 'unknown')}, ID: {result.get('id')}, Variants created: {len(result.get('variants', []))}")
+            return result
             
         except Exception as e:
             raise Exception(f"Failed to create product: {str(e)}")
