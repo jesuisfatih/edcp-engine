@@ -1863,19 +1863,23 @@ class ShopifyClient:
                             failed_count += 1
                     else:
                         # CRITICAL FIX: productVariantCreate is deprecated, use productVariantsBulkCreate
-                        # For single variant creation during update, we still use bulk but with one variant
+                        # ProductVariantsBulkInput only supports: price, barcode, options (array of strings), inventoryQuantities, inventoryPolicy
+                        # It does NOT support: sku, weight, weightUnit, selectedOptions
                         variant_payload = {
                             'price': str(variant_data.get('price', '0')),
-                            'sku': variant_sku if variant_sku else None,
-                            'barcode': variant_data.get('barcode', '') or None,
-                            'weight': variant_data.get('weight', 0) or 0,
-                            'weightUnit': self._normalize_weight_unit(variant_data.get('weight_unit'))
+                            'barcode': variant_data.get('barcode', '') or None
                         }
 
+                        # Convert selectedOptions to options array (array of strings, not objects)
                         if new_selected_options:
-                            variant_payload['selectedOptions'] = new_selected_options
+                            # Extract values from selectedOptions in order
+                            options_array = [opt.get('value', '') for opt in new_selected_options if opt.get('value')]
+                            if options_array:
+                                variant_payload['options'] = options_array
+                            else:
+                                variant_payload['options'] = [variant_sku if variant_sku else f"Variant-{created_count+1}"]
                         else:
-                            variant_payload['selectedOptions'] = [{'name': 'Title', 'value': variant_sku if variant_sku else f"Variant-{created_count+1}"}]
+                            variant_payload['options'] = [variant_sku if variant_sku else f"Variant-{created_count+1}"]
 
                         if location_id and variant_data.get('inventory_quantity') is not None:
                             variant_payload['inventoryQuantities'] = [{
