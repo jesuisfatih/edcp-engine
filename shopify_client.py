@@ -421,230 +421,160 @@ class ShopifyClient:
                     'type': 'custom'
                 }
             else:
-                payload = {
-                    'custom_collection': {
-                        'title': title,
-                        'handle': handle
+                # Use GraphQL to create collection
+                mutation = """
+                mutation collectionCreate($input: CollectionInput!) {
+                    collectionCreate(input: $input) {
+                        collection {
+                            id
+                            title
+                            handle
+                        }
+                        userErrors {
+                            field
+                            message
+                        }
                     }
                 }
+                """
+                collection_input = {
+                    'title': title,
+                    'handle': handle
+                }
                 response = requests.post(
-                    f"{self.base_url}/custom_collections.json",
+                    self.graphql_url,
                     headers=self.headers,
-                    json=payload
+                    json={'query': mutation, 'variables': {'input': collection_input}},
+                    timeout=30
                 )
                 response.raise_for_status()
-                coll_data = response.json()['custom_collection']
-                return {
-                    'id': coll_data['id'],
-                    'title': coll_data['title'],
-                    'handle': coll_data['handle'],
-                    'type': 'custom'
-                }
+                result = response.json()
+                collection_data = result.get('data', {}).get('collectionCreate', {}).get('collection', {})
+                user_errors = result.get('data', {}).get('collectionCreate', {}).get('userErrors', [])
+                if user_errors:
+                    error_messages = [e.get('message', str(e)) for e in user_errors]
+                    raise Exception(f"GraphQL user errors: {', '.join(error_messages)}")
+                if collection_data:
+                    collection_id_str = collection_data.get('id', '').replace('gid://shopify/Collection/', '')
+                    collection_id = int(collection_id_str) if collection_id_str.isdigit() else None
+                    return {
+                        'id': collection_id,
+                        'title': collection_data.get('title', ''),
+                        'handle': collection_data.get('handle', ''),
+                        'type': 'custom'
+                    }
+                raise Exception("Collection creation succeeded but no collection returned")
         except Exception as e:
             raise Exception(f"Failed to create collection: {str(e)}")
     
     def get_product_by_sku(self, sku: str) -> Optional[Dict]:
-        """Find product by SKU - FIXED: Uses cursor-based pagination"""
+        """Find product by SKU - Uses GraphQL only (no REST API)"""
         try:
-            if self.use_library:
-                products = shopify.Product.find(limit=250)
-                for product in products:
-                    for variant in product.variants:
-                        if variant.sku == sku:
-                            return {
-                                'id': product.id,
-                                'title': product.title,
-                                'handle': product.handle,
-                                'variants': [{
-                                    'id': variant.id,
-                                    'sku': variant.sku,
-                                    'price': variant.price
-                                }]
+            # Use GraphQL to search by SKU
+            query = """
+            query ($query: String!) {
+                productVariants(first: 1, query: $query) {
+                    edges {
+                        node {
+                            id
+                            sku
+                            price
+                            product {
+                                id
+                                title
+                                handle
                             }
-                
-                # If not found in first page, search more using cursor pagination
-                page_info = None
-                max_pages = 10
-                page_count = 0
-                
-                while page_count < max_pages:
-                    try:
-                        if page_info:
-                            products = shopify.Product.find(limit=250, page_info=page_info)
-                        else:
-                            # Get next page using pagination
-                            products = shopify.Product.find(limit=250)
-                        
-                        if not products:
-                            break
-                        
-                        for product in products:
-                            for variant in product.variants:
-                                if variant.sku == sku:
-                                    return {
-                                        'id': product.id,
-                                        'title': product.title,
-                                        'handle': product.handle,
-                                        'variants': [{
-                                            'id': variant.id,
-                                            'sku': variant.sku,
-                                            'price': variant.price
-                                        }]
-                                    }
-                        
-                        # Get next page info if available
-                        if hasattr(products, 'next_page_url'):
-                            page_info = products.next_page_url
-                        else:
-                            break
-                        
-                        page_count += 1
-                    except Exception as e:
-                        print(f"Error searching products page {page_count + 1}: {e}")
-                        break
-            else:
-                # Use REST API - FIXED: Use cursor-based pagination (page_info)
-                # Shopify 2025-01 API doesn't support 'page' parameter, use cursor pagination
-                limit = 250
-                page_info = None
-                max_pages = 10
-                page_count = 0
-                
-                while page_count < max_pages:
-                    try:
-                        # Rate limiting: Add delay between requests
-                        if page_count > 0:
-                            time.sleep(0.5)  # 500ms delay between pages
-                        
-                        url = f"{self.base_url}/products.json"
-                        params = {'limit': limit}
-                        
-                        # Add page_info if we have it (cursor-based pagination)
-                        if page_info:
-                            params['page_info'] = page_info
-                        
-                        response = requests.get(url, headers=self.headers, params=params, timeout=30)
-                        
-                        # Check for errors
-                        if response.status_code == 400:
-                            error_data = response.text
-                            print(f"Shopify API 400 Error: {error_data}")
-                            # If first page fails, try with different limit
-                            if page_count == 0:
-                                # Try with smaller limit
-                                params = {'limit': 50}
-                                response = requests.get(url, headers=self.headers, params=params, timeout=30)
-                                if response.status_code != 200:
-                                    break
-                            else:
-                                break
-                        else:
-                            response.raise_for_status()
-                        
-                        data = response.json()
-                        products = data.get('products', [])
-                        
-                        if not products:
-                            break
-                        
-                        # Search for SKU in this batch
-                        for product in products:
-                            for variant in product.get('variants', []):
-                                if variant.get('sku') == sku:
-                                    return {
-                                        'id': product['id'],
-                                        'title': product['title'],
-                                        'handle': product['handle'],
-                                        'variants': [{
-                                            'id': variant['id'],
-                                            'sku': variant['sku'],
-                                            'price': variant['price']
-                                        }]
-                                    }
-                        
-                        # Get next page info from Link header (cursor-based pagination)
-                        link_header = response.headers.get('Link', '')
-                        if link_header and 'rel="next"' in link_header:
-                            # Extract page_info from Link header
-                            # Format: <https://shop.myshopify.com/admin/api/2025-01/products.json?limit=250&page_info=...>; rel="next"
-                            import re
-                            match = re.search(r'page_info=([^>]+)', link_header)
-                            if match:
-                                page_info = match.group(1)
-                            else:
-                                break
-                        else:
-                            # No more pages
-                            break
-                        
-                        page_count += 1
-                    except requests.exceptions.HTTPError as e:
-                        if e.response.status_code == 400:
-                            print(f"Shopify API 400 Error on page {page_count + 1}: {e.response.text}")
-                            if page_count == 0:
-                                # Try first page with smaller limit
-                                try:
-                                    response = requests.get(f"{self.base_url}/products.json", 
-                                                          headers=self.headers, 
-                                                          params={'limit': 50}, 
-                                                          timeout=30)
-                                    if response.status_code == 200:
-                                        products = response.json().get('products', [])
-                                        for product in products:
-                                            for variant in product.get('variants', []):
-                                                if variant.get('sku') == sku:
-                                                    return {
-                                                        'id': product['id'],
-                                                        'title': product['title'],
-                                                        'handle': product['handle'],
-                                                        'variants': [{
-                                                            'id': variant['id'],
-                                                            'sku': variant['sku'],
-                                                            'price': variant['price']
-                                                        }]
-                                                    }
-                                except:
-                                    pass
-                            break
-                        else:
-                            raise
-                    except Exception as e:
-                        print(f"Error searching products: {e}")
-                        break
-            
+                        }
+                    }
+                }
+            }
+            """
+            resp = requests.post(
+                self.graphql_url,
+                headers=self.headers,
+                json={'query': query, 'variables': {'query': f"sku:{sku}"}},
+                timeout=30
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            edges = data.get('data', {}).get('productVariants', {}).get('edges', [])
+            if edges:
+                node = edges[0].get('node', {})
+                product = node.get('product', {})
+                return {
+                    'id': int(product.get('id', '').replace('gid://shopify/Product/', '')) if product.get('id') else None,
+                    'title': product.get('title', ''),
+                    'handle': product.get('handle', ''),
+                    'variants': [{
+                        'id': int(node.get('id', '').replace('gid://shopify/ProductVariant/', '')) if node.get('id') else None,
+                        'sku': node.get('sku', ''),
+                        'price': node.get('price', '0')
+                    }]
+                }
             return None
         except Exception as e:
-            raise Exception(f"Failed to search product: {str(e)}")
+            print(f"Failed to search product by SKU: {e}")
+            return None
     
     def get_product_by_title(self, title: str) -> Optional[Dict]:
-        """Find product by title - MUCH FASTER than SKU search, avoids rate limiting"""
+        """Find product by title - Uses GraphQL only (no REST API)"""
         try:
             if not title or not title.strip():
                 return None
             
-            # Use REST API with title search - much faster than pagination
-            url = f"{self.base_url}/products.json"
-            params = {
-                'title': title.strip(),
-                'limit': 10
-            }
-            
-            # Rate limiting - minimal delay for title search
-            time.sleep(0.2)
-            
-            response = requests.get(url, headers=self.headers, params=params, timeout=30)
-            
-            if response.status_code == 200:
-                products = response.json().get('products', [])
-                # Find exact match (case-insensitive)
-                for product in products:
-                    if product.get('title', '').strip().lower() == title.strip().lower():
-                        return {
-                            'id': product['id'],
-                            'title': product['title'],
-                            'handle': product['handle'],
-                            'variants': product.get('variants', [])
+            # Use GraphQL to search by title
+            query = """
+            query ($query: String!) {
+                products(first: 10, query: $query) {
+                    edges {
+                        node {
+                            id
+                            title
+                            handle
+                            variants(first: 10) {
+                                edges {
+                                    node {
+                                        id
+                                        sku
+                                        price
+                                    }
+                                }
+                            }
                         }
+                    }
+                }
+            }
+            """
+            resp = requests.post(
+                self.graphql_url,
+                headers=self.headers,
+                json={'query': query, 'variables': {'query': f"title:'{title.strip()}'"}},
+                timeout=30
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            edges = data.get('data', {}).get('products', {}).get('edges', [])
+            
+            # Find exact match (case-insensitive)
+            for edge in edges:
+                node = edge.get('node', {})
+                product_title = node.get('title', '').strip()
+                if product_title.lower() == title.strip().lower():
+                    variants_edges = node.get('variants', {}).get('edges', [])
+                    variants = []
+                    for v_edge in variants_edges:
+                        v_node = v_edge.get('node', {})
+                        variants.append({
+                            'id': int(v_node.get('id', '').replace('gid://shopify/ProductVariant/', '')) if v_node.get('id') else None,
+                            'sku': v_node.get('sku', ''),
+                            'price': v_node.get('price', '0')
+                        })
+                    return {
+                        'id': int(node.get('id', '').replace('gid://shopify/Product/', '')) if node.get('id') else None,
+                        'title': node.get('title', ''),
+                        'handle': node.get('handle', ''),
+                        'variants': variants
+                    }
             
             return None
         except Exception as e:
@@ -2096,32 +2026,71 @@ class ShopifyClient:
                                 return
                         collection.add_product(product_id)
                 else:
-                    response = requests.get(
-                        f"{self.base_url}/collects.json",
-                        headers=self.headers,
-                        params={'collection_id': collection_id, 'limit': 250},
-                        timeout=30
-                    )
-                    if response.status_code == 200:
-                        collects = response.json().get('collects', [])
-                        for collect in collects:
-                            if collect.get('product_id') == product_id:
-                                return
+                    # Use GraphQL to add product to collection
+                    # First check if product is already in collection
+                    product_gid = f"gid://shopify/Product/{product_id}"
+                    collection_gid = f"gid://shopify/Collection/{collection_id}"
                     
-                    payload = {
-                        'collect': {
-                            'product_id': product_id,
-                            'collection_id': collection_id
+                    check_query = """
+                    query ($collectionId: ID!, $productId: ID!) {
+                        collection(id: $collectionId) {
+                            products(first: 250, query: $productId) {
+                                edges {
+                                    node {
+                                        id
+                                    }
+                                }
+                            }
                         }
                     }
-                    response = requests.post(
-                        f"{self.base_url}/collects.json",
+                    """
+                    check_response = requests.post(
+                        self.graphql_url,
                         headers=self.headers,
-                        json=payload,
+                        json={'query': check_query, 'variables': {'collectionId': collection_gid, 'productId': f"id:{product_gid}"}},
+                        timeout=30
+                    )
+                    if check_response.status_code == 200:
+                        check_result = check_response.json()
+                        products_edges = check_result.get('data', {}).get('collection', {}).get('products', {}).get('edges', [])
+                        for edge in products_edges:
+                            if edge.get('node', {}).get('id') == product_gid:
+                                return  # Product already in collection
+                    
+                    # Add product to collection using GraphQL
+                    mutation = """
+                    mutation collectionAddProducts($id: ID!, $productIds: [ID!]!) {
+                        collectionAddProducts(id: $id, productIds: $productIds) {
+                            collection {
+                                id
+                            }
+                            userErrors {
+                                field
+                                message
+                            }
+                        }
+                    }
+                    """
+                    add_response = requests.post(
+                        self.graphql_url,
+                        headers=self.headers,
+                        json={'query': mutation, 'variables': {'id': collection_gid, 'productIds': [product_gid]}},
                         timeout=30
                     )
                     
-                    if response.status_code == 422:
+                    if add_response.status_code == 200:
+                        add_result = add_response.json()
+                        user_errors = add_result.get('data', {}).get('collectionAddProducts', {}).get('userErrors', [])
+                        if user_errors:
+                            error_messages = [e.get('message', str(e)) for e in user_errors]
+                            # 422 errors (product already in collection) are OK, just log them
+                            if 'already' in ' '.join(error_messages).lower() or 'exists' in ' '.join(error_messages).lower():
+                                print(f"Product {product_id} already in collection {collection_id}")
+                                return
+                            else:
+                                print(f"Warning: Error adding product to collection: {error_messages}")
+                                return
+                    elif add_response.status_code == 422:
                         error_data = response.text
                         if 'already' in error_data.lower() or 'duplicate' in error_data.lower():
                             return
@@ -2233,25 +2202,50 @@ class ShopifyClient:
     def delete_all_data(self):
         """Delete all products and collections from Shopify"""
         try:
-            # Get all products
+            # Get all products using GraphQL
             all_products = []
-            if self.use_library:
-                products = shopify.Product.find(limit=250)
-                for product in products:
-                    all_products.append(product.id)
-            else:
-                url = f"{self.base_url}/products.json"
-                params = {'limit': 250}
-                while True:
-                    response = requests.get(url, headers=self.headers, params=params, timeout=30)
-                    response.raise_for_status()
-                    data = response.json()
-                    products = data.get('products', [])
-                    if not products:
-                        break
-                    for product in products:
-                        all_products.append(product['id'])
-                    link_header = response.headers.get('Link', '')
+            query = """
+            query ($cursor: String) {
+                products(first: 250, after: $cursor) {
+                    edges {
+                        node {
+                            id
+                        }
+                    }
+                    pageInfo {
+                        hasNextPage
+                        endCursor
+                    }
+                }
+            }
+            """
+            cursor = None
+            while True:
+                variables = {'cursor': cursor} if cursor else {}
+                response = requests.post(
+                    self.graphql_url,
+                    headers=self.headers,
+                    json={'query': query, 'variables': variables},
+                    timeout=30
+                )
+                response.raise_for_status()
+                result = response.json()
+                edges = result.get('data', {}).get('products', {}).get('edges', [])
+                if not edges:
+                    break
+                for edge in edges:
+                    node = edge.get('node', {})
+                    product_gid = node.get('id', '')
+                    product_id_str = product_gid.replace('gid://shopify/Product/', '')
+                    product_id = int(product_id_str) if product_id_str.isdigit() else None
+                    if product_id:
+                        all_products.append(product_id)
+                page_info = result.get('data', {}).get('products', {}).get('pageInfo', {})
+                if not page_info.get('hasNextPage'):
+                    break
+                cursor = page_info.get('endCursor')
+                if not cursor:
+                    break
                     if link_header and 'rel="next"' in link_header:
                         import re
                         match = re.search(r'page_info=([^>]+)', link_header)
