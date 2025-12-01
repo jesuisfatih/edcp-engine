@@ -1008,22 +1008,28 @@ class ShopifyClient:
                 for idx, variant_input in enumerate(unique_variants):
                     variant_sku = variant_input.get('sku', f'variant-{idx+1}')
                     
+                    # CRITICAL: ProductVariantsBulkInput only supports: price, barcode, options (array of strings), inventoryQuantities, inventoryPolicy
+                    # It does NOT support: sku, weight, weightUnit, selectedOptions
+                    # selectedOptions must be converted to options array (just values, not objects)
                     variant_payload = {
                         'price': variant_input.get('price', '0'),
-                        'barcode': variant_input.get('barcode') or None,
-                        'weight': variant_input.get('weight', 0) or 0,
-                        'weightUnit': self._normalize_weight_unit(variant_input.get('weightUnit'))
+                        'barcode': variant_input.get('barcode') or None
                     }
                     
-                    if variant_input.get('sku'):
-                        variant_payload['sku'] = variant_input['sku']
-                    
-                    # CRITICAL: selectedOptions is REQUIRED
+                    # CRITICAL: Convert selectedOptions to options array (array of strings, not objects)
+                    # selectedOptions format: [{'name': 'Color', 'value': 'Red'}, {'name': 'Size', 'value': 'M'}]
+                    # options format: ['Red', 'M'] (just the values, in order)
                     if variant_input.get('selectedOptions'):
-                        variant_payload['selectedOptions'] = variant_input['selectedOptions']
+                        # Extract values from selectedOptions in order
+                        options_array = [opt.get('value', '') for opt in variant_input['selectedOptions'] if opt.get('value')]
+                        if options_array:
+                            variant_payload['options'] = options_array
+                        else:
+                            print(f"WARNING: Variant {variant_sku} has empty selectedOptions, using SKU as default option")
+                            variant_payload['options'] = [variant_sku if variant_sku else f'Variant-{idx+1}']
                     else:
-                        print(f"CRITICAL ERROR: Variant {variant_sku} has no selectedOptions, creating default...")
-                        variant_payload['selectedOptions'] = [{'name': 'Default', 'value': variant_sku if variant_sku else f'Variant-{idx+1}'}]
+                        print(f"CRITICAL ERROR: Variant {variant_sku} has no selectedOptions, using SKU as default option")
+                        variant_payload['options'] = [variant_sku if variant_sku else f'Variant-{idx+1}']
                     
                     if variant_input.get('inventoryQuantities'):
                         variant_payload['inventoryQuantities'] = variant_input['inventoryQuantities']
