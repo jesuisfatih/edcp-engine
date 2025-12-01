@@ -953,10 +953,84 @@ class ShopifyClient:
                 failed_count = len(unique_variants) - created_count
                 print(f"📊 Total variants created: {created_count}/{len(unique_variants)} (failed: {failed_count})")
                 
+                # Step 4.5: Update variant SKU, weight, and inventory (fields not supported in ProductVariantsBulkInput)
+                if variants_list and len(variants_list) > 0:
+                    print(f"🔧 Updating SKU, weight, and inventory for {len(variants_list)} created variants...")
+                    
+                    # Build a map of option combinations to original variant data
+                    option_to_variant_map = {}
+                    for v in unique_variants:
+                        selected_opts = v.get('selectedOptions', [])
+                        option_key = tuple((opt['name'], opt['value']) for opt in selected_opts)
+                        option_to_variant_map[option_key] = v
+                    
+                    updated_count = 0
+                    for created_variant in variants_list:
+                        variant_gid = created_variant.get('gid', '')
+                        variant_sku_match = created_variant.get('sku', '')
+                        selected_opts = created_variant.get('selectedOptions', [])
+                        option_key = tuple((opt['name'], opt['value']) for opt in selected_opts)
+                        
+                        # Find original variant data by options
+                        original_data = option_to_variant_map.get(option_key)
+                        if not original_data:
+                            print(f"⚠️ Could not find original data for variant {variant_sku_match}")
+                            continue
+                        
+                        target_sku = original_data.get('sku')
+                        weight = original_data.get('weight', 0)
+                        weight_unit = original_data.get('weightUnit', 'POUNDS')
+                        inventory_qty = original_data.get('inventoryQuantities', [{}])[0].get('availableQuantity') if original_data.get('inventoryQuantities') else None
+                        
+                        # Update variant with SKU and weight
+                        try:
+                            update_mutation = """
+                            mutation productVariantUpdate($input: ProductVariantInput!) {
+                                productVariantUpdate(input: $input) {
+                                    productVariant {
+                                        id
+                                        sku
+                                    }
+                                    userErrors {
+                                        field
+                                        message
+                                    }
+                                }
+                            }
+                            """
+                            
+                            variant_update_input = {
+                                'id': variant_gid,
+                                'sku': target_sku,
+                                'weight': float(weight) if weight else 0.0,
+                                'weightUnit': weight_unit
+                            }
+                            
+                            update_response = requests.post(
+                                self.graphql_url,
+                                headers=self.headers,
+                                json={'query': update_mutation, 'variables': {'input': variant_update_input}},
+                                timeout=30
+                            )
+                            update_response.raise_for_status()
+                            update_result = update_response.json()
+                            
+                            update_data = update_result.get('data', {}).get('productVariantUpdate', {})
+                            user_errors = update_data.get('userErrors', [])
+                            if user_errors:
+                                print(f"⚠️ Error updating variant {target_sku}: {user_errors[0].get('message')}")
+                            else:
+                                updated_count += 1
+                            
+                            time.sleep(0.1)  # Rate limiting
+                        except Exception as e:
+                            print(f"⚠️ Could not update variant {target_sku}: {e}")
+                    
+                    print(f"✅ Updated {updated_count}/{len(variants_list)} variants with SKU/weight")
+                
                 # Log warning if no variants created, but DON'T fail
                 if created_count == 0:
-                    print(f"⚠️ WARNING: No variants were created for product '{product.get('title')}'")
-                    print(f"   This might be OK if variants already existed")
+                    print(f"⚠️ WARNING: No new variants were created for product '{product.get('title')}'")
                     print(f"   Continuing to add images and metafields...")
             else:
                 raise Exception("CRITICAL: No variants to create. Product cannot exist without variants.")
