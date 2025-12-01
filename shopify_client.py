@@ -1768,12 +1768,18 @@ class ShopifyClient:
             # Skip first variant (already created in STEP 1)
             remaining_variants = variants_data[1:] if len(variants_data) > 1 else []
             
+            print(f"   DEBUG: Total variants_data: {len(variants_data)}, Remaining after first: {len(remaining_variants)}")
+            
             if not remaining_variants:
                 print(f"   Only 1 variant, already created in STEP 1")
                 # Return the first variant info
-                return [{'id': f"gid://shopify/ProductVariant/{product['variants'][0]['id']}", 'sku': product['variants'][0].get('sku', ''), 'selectedOptions': []}] if 'variants' in product and product['variants'] else []
+                first_variant_gid = f"gid://shopify/ProductVariant/{product.get('variants', [{}])[0].get('id', 0)}" if product.get('variants') else None
+                if first_variant_gid:
+                    return [{'id': first_variant_gid, 'sku': product['variants'][0].get('sku', ''), 'selectedOptions': []}]
+                return []
             
             print(f"   Adding {len(remaining_variants)} remaining variants using REST API...")
+            print(f"   Sample remaining variant: {remaining_variants[0] if remaining_variants else 'None'}")
             
             for idx, v_data in enumerate(variants_data):
                 option1 = str(v_data.get('option1', '')).strip()
