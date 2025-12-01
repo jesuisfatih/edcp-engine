@@ -605,41 +605,10 @@ class ShopifyClient:
             }
             """
             
-            # CRITICAL FIX: Extract product options from variants BEFORE creating product
-            # ProductVariantsBulkInput.optionValues[].optionName must reference existing product options
-            # We need to define product options in productCreate, otherwise variant creation will fail
-            option_map = {}  # {'Color': {'Red', 'Blue', ...}, 'Size': {'S', 'M', 'L', ...}}
-            
-            for variant_data in variants:
-                # option1 = Color, option2 = Size, option3 = Style (if exists)
-                option1 = (variant_data.get('option1') or '').strip()
-                option2 = (variant_data.get('option2') or '').strip()
-                option3 = (variant_data.get('option3') or '').strip()
-                
-                if option1:
-                    option_map.setdefault('Color', set()).add(option1)
-                if option2:
-                    option_map.setdefault('Size', set()).add(option2)
-                if option3:
-                    option_map.setdefault('Style', set()).add(option3)
-            
-            # Build product options array: [{'name': 'Color', 'values': [{'name': 'Red'}, {'name': 'Blue'}]}, ...]
-            # CRITICAL: values must be array of objects, not array of strings
-            product_options = []
-            for option_name, values_set in option_map.items():
-                if values_set:
-                    # Convert string values to objects: ['Red', 'Blue'] -> [{'name': 'Red'}, {'name': 'Blue'}]
-                    values_objects = [{'name': value} for value in sorted(list(values_set))]
-                    product_options.append({
-                        'name': option_name,
-                        'values': values_objects
-                    })
-            
-            # If no options found, create a default "Title" option
-            if not product_options and variants:
-                product_options = [{'name': 'Title', 'values': [{'name': 'Default'}]}]
-            
-            print(f"📋 Product options to create: {[opt['name'] for opt in product_options]}")
+            # CRITICAL: Do NOT define productOptions in productCreate
+            # Let Shopify auto-detect options from variant optionValues
+            # This prevents default variant creation and "already exists" errors
+            print(f"📋 Product will be created WITHOUT productOptions - Shopify will auto-detect from variants")
 
             # Normalize tags (accept str or list)
             raw_tags = product_data.get('tags', [])
@@ -650,8 +619,8 @@ class ShopifyClient:
             else:
                 tags = []
 
-            # CRITICAL FIX: Define product options in productCreate
-            # ProductVariantsBulkInput.optionValues[].optionName requires these options to exist
+            # Product input WITHOUT productOptions
+            # Shopify will auto-detect options from variant optionValues
             product_input = {
                 'title': product_data.get('title', 'Product'),
                 'descriptionHtml': product_data.get('description', '') or '',
@@ -660,12 +629,7 @@ class ShopifyClient:
                 'tags': tags,
                 'status': product_data.get('status', 'ACTIVE').upper()
             }
-            
-            # Add product options if we have any
-            # CRITICAL: Use 'productOptions' not 'options' - Shopify 2024-10+ schema requires productOptions
-            if product_options:
-                product_input['productOptions'] = product_options
-                print(f"✅ Product will be created with {len(product_options)} option(s): {[opt['name'] for opt in product_options]}")
+            print(f"✅ Product input ready (no productOptions - will auto-detect from variants)")
             
             response = requests.post(
                 self.graphql_url,
@@ -781,32 +745,22 @@ class ShopifyClient:
                 # Shopify requires that all defined options have values in each variant
                 selected_options = []
                 
-                # Build selectedOptions based on what we defined in productOptions (from option_map)
-                # We MUST provide values for ALL options defined in productOptions
-                if 'Color' in option_map and option_map['Color']:
-                    # Use option1 if available, otherwise use SKU-based fallback
-                    value = option1 if option1 else (f"Color-{sku[:8]}" if sku else f"Color-{len(unique_variants)+1}")
-                    selected_options.append({'name': 'Color', 'value': value})
-                if 'Size' in option_map and option_map['Size']:
-                    # Use option2 if available, otherwise use SKU-based fallback
-                    value = option2 if option2 else (f"Size-{sku[:8]}" if sku else f"Size-{len(unique_variants)+1}")
-                    selected_options.append({'name': 'Size', 'value': value})
-                if 'Style' in option_map and option_map['Style']:
-                    # Use option3 if available, otherwise use SKU-based fallback
-                    value = option3 if option3 else (f"Style-{sku[:8]}" if sku else f"Style-{len(unique_variants)+1}")
-                    selected_options.append({'name': 'Style', 'value': value})
+                # Build selectedOptions from variant data
+                # Shopify will auto-detect product options from these
+                selected_options = []
+                if option1:
+                    selected_options.append({'name': 'Color', 'value': option1})
+                if option2:
+                    selected_options.append({'name': 'Size', 'value': option2})
+                if option3:
+                    selected_options.append({'name': 'Style', 'value': option3})
                 
                 # CRITICAL: Must have at least one option value
                 if not selected_options:
-                    print(f"⚠️ WARNING: Variant {sku} has no option values, using SKU as default option value")
+                    print(f"⚠️ WARNING: Variant {sku} has no option values, using SKU as default")
                     selected_options.append({'name': 'Title', 'value': sku if sku else f'Variant-{len(unique_variants)+1}'})
                 
                 variant_input['selectedOptions'] = selected_options
-                
-                # DEBUG: Log first few variants to verify option matching
-                if len(unique_variants) < 3:
-                    option_names_list = list(option_map.keys())
-                    print(f"DEBUG: Variant {len(unique_variants)+1} - productOptions: {option_names_list}, selectedOptions: {selected_options}")
                 
                 if location_id and variant_data.get('inventory_quantity'):
                     variant_input['inventoryQuantities'] = [{
@@ -905,92 +859,99 @@ class ShopifyClient:
                         print(f"CRITICAL ERROR: Variant {variant_sku} has no selectedOptions, cannot create variant without options")
                     
                     bulk_variant_inputs.append(variant_payload)
-                
-                # Use productVariantsBulkCreate mutation
-                variant_bulk_mutation = """
-                mutation productVariantsBulkCreate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
-                    productVariantsBulkCreate(productId: $productId, variants: $variants) {
-                        productVariants {
-                            id
-                            sku
-                            price
-                            selectedOptions {
-                                name
-                                value
+                    
+                    if not bulk_variant_inputs:
+                        print(f"⚠️ No valid variants in batch {batch_idx + 1}, skipping...")
+                        continue
+                    
+                    # Use productVariantsBulkCreate mutation
+                    variant_bulk_mutation = """
+                    mutation productVariantsBulkCreate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+                        productVariantsBulkCreate(productId: $productId, variants: $variants) {
+                            productVariants {
+                                id
+                                sku
+                                price
+                                selectedOptions {
+                                    name
+                                    value
+                                }
                             }
-                        }
-                        userErrors {
-                            field
-                            message
+                            userErrors {
+                                field
+                                message
+                            }
                         }
                     }
-                }
-                """
+                    """
+                    
+                    try:
+                        # Create variants in this batch
+                        variant_response = requests.post(
+                            self.graphql_url,
+                            headers=self.headers,
+                            json={
+                                'query': variant_bulk_mutation,
+                                'variables': {
+                                    'productId': product_gid,
+                                    'variants': bulk_variant_inputs
+                                }
+                            },
+                            timeout=120
+                        )
+                        variant_response.raise_for_status()
+                        variant_result = variant_response.json()
+                        
+                        if 'errors' in variant_result:
+                            error_messages = [e.get('message', str(e)) for e in variant_result['errors']]
+                            print(f"❌ Batch {batch_idx + 1} GraphQL errors: {', '.join(error_messages)}")
+                            # Continue to next batch
+                            continue
+                        
+                        bulk_create = variant_result.get('data', {}).get('productVariantsBulkCreate', {})
+                        user_errors = bulk_create.get('userErrors', [])
+                        
+                        if user_errors:
+                            error_messages = [e.get('message', str(e)) for e in user_errors]
+                            already_exists_error = any('already exists' in msg.lower() for msg in error_messages)
+                            
+                            if already_exists_error:
+                                print(f"⚠️ Batch {batch_idx + 1}: Some variants already exist (skipping duplicates)")
+                            else:
+                                print(f"⚠️ Batch {batch_idx + 1}: {', '.join(error_messages[:2])}")
+                        
+                        created_variants = bulk_create.get('productVariants', [])
+                        batch_created = len(created_variants)
+                        
+                        # Add to overall list
+                        for variant_node in created_variants:
+                            variant_id_str = variant_node.get('id', '').replace('gid://shopify/ProductVariant/', '')
+                            variant_id = int(variant_id_str) if variant_id_str.isdigit() else None
+                            variant_sku_created = variant_node.get('sku', '')
+                            variant_gid_created = variant_node.get('id', '')
+                            all_created_variants.append({
+                                'id': variant_id,
+                                'gid': variant_gid_created,
+                                'sku': variant_sku_created,
+                                'price': variant_node.get('price', '0'),
+                                'selectedOptions': variant_node.get('selectedOptions', [])
+                            })
+                        
+                        print(f"✅ Batch {batch_idx + 1}: Created {batch_created}/{len(bulk_variant_inputs)} variants")
+                        
+                    except Exception as e:
+                        print(f"❌ Batch {batch_idx + 1} failed: {e}")
+                        # Continue to next batch
+                    
+                    # Rate limiting between batches
+                    if batch_idx < total_batches - 1:
+                        time.sleep(0.5)
                 
-                try:
-                    # Create all variants in one batch
-                    variant_response = requests.post(
-                        self.graphql_url,
-                        headers=self.headers,
-                        json={
-                            'query': variant_bulk_mutation,
-                            'variables': {
-                                'productId': product_gid,
-                                'variants': bulk_variant_inputs
-                            }
-                        },
-                        timeout=120  # Longer timeout for bulk operations
-                    )
-                    variant_response.raise_for_status()
-                    variant_result = variant_response.json()
-                    
-                    if 'errors' in variant_result:
-                        error_messages = [e.get('message', str(e)) for e in variant_result['errors']]
-                        error_details = f"GraphQL errors creating variants: {', '.join(error_messages)}"
-                        print(f"❌ {error_details}")
-                        print(f"   Full response: {variant_result}")
-                        raise Exception(error_details)
-                    
-                    bulk_create = variant_result.get('data', {}).get('productVariantsBulkCreate', {})
-                    user_errors = bulk_create.get('userErrors', [])
-                    
-                    if user_errors:
-                        error_messages = [e.get('message', str(e)) for e in user_errors]
-                        
-                        # Check if error is "already exists" - if so, treat as partial success
-                        already_exists_error = any('already exists' in msg.lower() for msg in error_messages)
-                        
-                        if already_exists_error:
-                            print(f"⚠️ Some variants already exist (this is OK, skipping duplicates)")
-                            print(f"   First error: {user_errors[0].get('message', 'N/A')}")
-                            # Don't raise exception - continue with whatever variants were created
-                        else:
-                            error_details = f"User errors creating variants: {', '.join(error_messages)}"
-                            print(f"❌ {error_details}")
-                            print(f"   Full response: {variant_result}")
-                            # Log first few errors in detail
-                            for i, err in enumerate(user_errors[:5]):
-                                print(f"   Error {i+1}: {err}")
-                            raise Exception(error_details)
-                    
-                    created_variants = bulk_create.get('productVariants', [])
-                    created_count = len(created_variants)
-                    failed_count = len(unique_variants) - created_count
-                    
-                    # Build variants_list from created variants
-                    for variant_node in created_variants:
-                        variant_id_str = variant_node.get('id', '').replace('gid://shopify/ProductVariant/', '')
-                        variant_id = int(variant_id_str) if variant_id_str.isdigit() else None
-                        variant_sku_created = variant_node.get('sku', '')
-                        variant_gid_created = variant_node.get('id', '')
-                        variants_list.append({
-                            'id': variant_id,
-                            'gid': variant_gid_created,
-                            'sku': variant_sku_created,
-                            'price': variant_node.get('price', '0')
-                        })
-                    
-                    print(f"📊 Variant creation summary: {created_count} successful, {failed_count} failed out of {len(unique_variants)} total")
+                # Summary
+                variants_list = all_created_variants
+                created_count = len(variants_list)
+                failed_count = len(unique_variants) - created_count
+                print(f"📊 Total variants created: {created_count}/{len(unique_variants)} (failed: {failed_count})")
                     
                 except requests.exceptions.HTTPError as e:
                     error_msg = f"HTTP Error creating variants: {e}"
