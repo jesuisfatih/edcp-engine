@@ -958,6 +958,79 @@ class ShopifyClient:
         except Exception as e:
             print(f"Warning: Error adding metafields: {e}")
     
+    def _add_variant_metafields(self, variant_gid: str, metafields: Dict):
+        """Add metafields to a variant using GraphQL"""
+        try:
+            if not metafields:
+                return
+            
+            for key, value in metafields.items():
+                if value is None or value == '':
+                    continue
+                
+                if isinstance(value, bool):
+                    value_type = 'boolean'
+                    value_str = str(value).lower()
+                elif isinstance(value, (int, float)):
+                    value_type = 'number_integer' if isinstance(value, int) else 'number_decimal'
+                    value_str = str(value)
+                else:
+                    value_type = 'single_line_text_field'
+                    value_str = str(value)
+                
+                try:
+                    metafield_mutation = """
+                    mutation metafieldsSet($metafields: [MetafieldsSetInput!]!) {
+                        metafieldsSet(metafields: $metafields) {
+                            metafields {
+                                id
+                                namespace
+                                key
+                            }
+                            userErrors {
+                                field
+                                message
+                            }
+                        }
+                    }
+                    """
+                    
+                    metafield_input = {
+                        'ownerId': variant_gid,
+                        'namespace': 'ssactivewear',
+                        'key': key.lower().replace(' ', '_'),
+                        'value': value_str,
+                        'type': value_type
+                    }
+                    
+                    response = requests.post(
+                        self.graphql_url,
+                        headers=self.headers,
+                        json={
+                            'query': metafield_mutation,
+                            'variables': {
+                                'metafields': [metafield_input]
+                            }
+                        },
+                        timeout=30
+                    )
+                    response.raise_for_status()
+                    result = response.json()
+                    
+                    if 'errors' in result:
+                        print(f"Warning: Error adding variant metafield {key}: {result['errors']}")
+                    else:
+                        user_errors = result.get('data', {}).get('metafieldsSet', {}).get('userErrors', [])
+                        if user_errors:
+                            print(f"Warning: User errors adding variant metafield {key}: {user_errors}")
+                    
+                    time.sleep(0.1)
+                except Exception as e:
+                    print(f"Warning: Could not add variant metafield {key}: {e}")
+            
+        except Exception as e:
+            print(f"Warning: Error adding variant metafields: {e}")
+    
     def create_product(self, product_data: Dict) -> Dict:
         """Create a new product in Shopify - ALWAYS uses GraphQL (no REST API)"""
         try:
