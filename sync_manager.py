@@ -333,34 +333,24 @@ class SyncManager:
             
             all_products = []
             
-            # OPTIMIZATION: If styles are selected, use API-level filtering with styleid parameter
+            # OPTIMIZATION: If styles are selected, use API-level filtering with styleid parameter (batched)
             if style_list:
-                print(f"Using API-level filtering for {len(style_list)} styles...")
-                # Convert style IDs to comma-separated string for API
-                styleid_param = ','.join([str(sid) for sid in style_list])
-                print(f"Fetching products with styleid={styleid_param}")
-                
-                try:
-                    # Use API's styleid filter - MUCH MORE EFFICIENT!
-                    products = self.ss_client.get_products(styleid=styleid_param, limit=5000)
-                    print(f"API returned {len(products)} products for selected styles")
-                    all_products = products
-                except Exception as e:
-                    print(f"Error with styleid filter: {e}")
-                    # Fallback: get all and filter in memory
-                    print("Falling back to memory filtering...")
-                    products = self.ss_client.get_products(limit=5000)
-                    filtered = []
-                    for product in products:
-                        product_style_id = product.get('styleID')
-                        if product_style_id:
-                            try:
-                                if int(product_style_id) in style_list:
-                                    filtered.append(product)
-                            except:
-                                pass
-                    all_products = filtered
-                    print(f"Memory filter found {len(all_products)} products")
+                print(f"Using API-level filtering for {len(style_list)} styles (batched)...")
+                def chunks(lst, n):
+                    for i in range(0, len(lst), n):
+                        yield lst[i:i+n]
+                batched_products = []
+                for batch in chunks(style_list, 50):
+                    styleid_param = ','.join([str(sid) for sid in batch])
+                    print(f"Fetching products with styleid batch size={len(batch)}")
+                    try:
+                        products = self.ss_client.get_products(styleid=styleid_param, limit=5000)
+                        print(f"API returned {len(products)} products for batch")
+                        batched_products.extend(products)
+                    except Exception as e:
+                        print(f"Error with styleid batch {batch}: {e}")
+                        continue
+                all_products = batched_products
             else:
                 # No style filter, get all products
                 print("No style filter, fetching all products...")

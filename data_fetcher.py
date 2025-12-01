@@ -246,32 +246,27 @@ class DataFetcher:
 
         all_products = []
 
-        # CRITICAL: Use API-level filtering for styles (much more efficient)
+        # CRITICAL: Use API-level filtering for styles (much more efficient) with batching
         if style_list:
-            print(f"Using API-level filtering for {len(style_list)} styles...")
-            styleid_param = ",".join([str(sid) for sid in style_list])
-            print(f"Fetching products with styleid={styleid_param}")
+            print(f"Using API-level filtering for {len(style_list)} styles (batched)...")
 
-            try:
-                products = self.ss_client.get_products(styleid=styleid_param, limit=5000)
-                print(f"API returned {len(products)} products for selected styles")
-                all_products = products
-            except Exception as e:
-                print(f"Error with styleid filter: {e}")
-                # Fallback: get all and filter in memory
-                print("Falling back to memory filtering...")
-                products = self.ss_client.get_products(limit=5000)
-                filtered = []
-                for product in products:
-                    product_style_id = product.get("styleID")
-                    if product_style_id:
-                        try:
-                            if int(product_style_id) in style_list:
-                                filtered.append(product)
-                        except Exception:
-                            pass
-                all_products = filtered
-                print(f"Memory filter found {len(all_products)} products")
+            def chunks(lst, n):
+                for i in range(0, len(lst), n):
+                    yield lst[i:i + n]
+
+            batched_products = []
+            for batch in chunks(style_list, 50):  # batch styleid list to avoid oversized queries
+                styleid_param = ",".join([str(sid) for sid in batch])
+                print(f"Fetching products with styleid batch size={len(batch)}")
+                try:
+                    products = self.ss_client.get_products(styleid=styleid_param, limit=5000)
+                    print(f"API returned {len(products)} products for batch")
+                    batched_products.extend(products)
+                except Exception as e:
+                    print(f"Error with styleid batch {batch}: {e}")
+                    # Fallback: skip this batch to continue others
+                    continue
+            all_products = batched_products
         else:
             # No style filter, get all products
             print("No style filter, fetching all products...")
