@@ -999,10 +999,45 @@ class ShopifyClient:
                     print(f"⚠️ WARNING: No variant images found in product_data!")
                     print(f"   Checking first variant: {unique_variants[0] if unique_variants else 'N/A'}")
                 
-                variant_mutation = """
-                mutation productVariantCreate($input: ProductVariantInput!) {
-                    productVariantCreate(input: $input) {
-                        productVariant {
+                # CRITICAL FIX: productVariantCreate is deprecated in 2024-10+
+                # Use productVariantsBulkCreate instead (supports batch creation)
+                print(f"Creating {len(unique_variants)} variants using productVariantsBulkCreate...")
+                
+                # Prepare all variant inputs for bulk creation
+                bulk_variant_inputs = []
+                for idx, variant_input in enumerate(unique_variants):
+                    variant_sku = variant_input.get('sku', f'variant-{idx+1}')
+                    
+                    variant_payload = {
+                        'price': variant_input.get('price', '0'),
+                        'barcode': variant_input.get('barcode') or None,
+                        'weight': variant_input.get('weight', 0) or 0,
+                        'weightUnit': self._normalize_weight_unit(variant_input.get('weightUnit'))
+                    }
+                    
+                    if variant_input.get('sku'):
+                        variant_payload['sku'] = variant_input['sku']
+                    
+                    # CRITICAL: selectedOptions is REQUIRED
+                    if variant_input.get('selectedOptions'):
+                        variant_payload['selectedOptions'] = variant_input['selectedOptions']
+                    else:
+                        print(f"CRITICAL ERROR: Variant {variant_sku} has no selectedOptions, creating default...")
+                        variant_payload['selectedOptions'] = [{'name': 'Default', 'value': variant_sku if variant_sku else f'Variant-{idx+1}'}]
+                    
+                    if variant_input.get('inventoryQuantities'):
+                        variant_payload['inventoryQuantities'] = variant_input['inventoryQuantities']
+                    
+                    if variant_input.get('inventoryPolicy'):
+                        variant_payload['inventoryPolicy'] = variant_input['inventoryPolicy']
+                    
+                    bulk_variant_inputs.append(variant_payload)
+                
+                # Use productVariantsBulkCreate mutation
+                variant_bulk_mutation = """
+                mutation productVariantsBulkCreate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+                    productVariantsBulkCreate(productId: $productId, variants: $variants) {
+                        productVariants {
                             id
                             sku
                             price
@@ -1019,138 +1054,80 @@ class ShopifyClient:
                 }
                 """
                 
-                print(f"Creating {len(unique_variants)} variants...")
-                created_count = 0
-                failed_count = 0
-                
-                for idx, variant_input in enumerate(unique_variants):
-                    variant_sku = variant_input.get('sku', f'variant-{idx+1}')
+                try:
+                    # Create all variants in one batch
+                    variant_response = requests.post(
+                        self.graphql_url,
+                        headers=self.headers,
+                        json={
+                            'query': variant_bulk_mutation,
+                            'variables': {
+                                'productId': product_gid,
+                                'variants': bulk_variant_inputs
+                            }
+                        },
+                        timeout=120  # Longer timeout for bulk operations
+                    )
+                    variant_response.raise_for_status()
+                    variant_result = variant_response.json()
                     
-                    variant_payload = {
-                        'price': variant_input.get('price', '0'),
-                        'barcode': variant_input.get('barcode') or None,
-                        'weight': variant_input.get('weight', 0) or 0,
-                        'weightUnit': self._normalize_weight_unit(variant_input.get('weightUnit'))
-                    }
+                    if 'errors' in variant_result:
+                        error_messages = [e.get('message', str(e)) for e in variant_result['errors']]
+                        error_details = f"GraphQL errors creating variants: {', '.join(error_messages)}"
+                        print(f"❌ {error_details}")
+                        print(f"   Full response: {variant_result}")
+                        raise Exception(error_details)
                     
-                    if variant_input.get('sku'):
-                        variant_payload['sku'] = variant_input['sku']
+                    bulk_create = variant_result.get('data', {}).get('productVariantsBulkCreate', {})
+                    user_errors = bulk_create.get('userErrors', [])
                     
-                    # CRITICAL: selectedOptions is REQUIRED - should never be empty after our fix above
-                    if variant_input.get('selectedOptions'):
-                        variant_payload['selectedOptions'] = variant_input['selectedOptions']
-                    else:
-                        # Fallback: create default option
-                        print(f"CRITICAL ERROR: Variant {variant_sku} has no selectedOptions, creating default...")
-                        variant_payload['selectedOptions'] = [{'name': 'Default', 'value': variant_sku if variant_sku else f'Variant-{idx+1}'}]
+                    if user_errors:
+                        error_messages = [e.get('message', str(e)) for e in user_errors]
+                        error_details = f"User errors creating variants: {', '.join(error_messages)}"
+                        print(f"❌ {error_details}")
+                        print(f"   Full response: {variant_result}")
+                        # Log first few errors in detail
+                        for i, err in enumerate(user_errors[:5]):
+                            print(f"   Error {i+1}: {err}")
+                        raise Exception(error_details)
                     
-                    if variant_input.get('inventoryQuantities'):
-                        variant_payload['inventoryQuantities'] = variant_input['inventoryQuantities']
+                    created_variants = bulk_create.get('productVariants', [])
+                    created_count = len(created_variants)
+                    failed_count = len(unique_variants) - created_count
                     
-                    if variant_input.get('inventoryPolicy'):
-                        variant_payload['inventoryPolicy'] = variant_input['inventoryPolicy']
+                    # Build variants_list from created variants
+                    for variant_node in created_variants:
+                        variant_id_str = variant_node.get('id', '').replace('gid://shopify/ProductVariant/', '')
+                        variant_id = int(variant_id_str) if variant_id_str.isdigit() else None
+                        variant_sku_created = variant_node.get('sku', '')
+                        variant_gid_created = variant_node.get('id', '')
+                        variants_list.append({
+                            'id': variant_id,
+                            'gid': variant_gid_created,
+                            'sku': variant_sku_created,
+                            'price': variant_node.get('price', '0')
+                        })
                     
-                    try:
-                        # DEBUG: Log variant payload before sending
-                        if idx < 3:  # Log first 3 variants for debugging
-                            print(f"DEBUG: Creating variant {idx+1}/{len(unique_variants)} - SKU: {variant_sku}")
-                            print(f"DEBUG: Variant payload: {variant_payload}")
-                        
-                        # CRITICAL FIX: ProductVariantInput requires productId to be INSIDE the input object
-                        # According to Shopify GraphQL API 2025-10 docs
-                        variant_input_payload = {
-                            'productId': product_gid,
-                            **variant_payload
-                        }
-                        
-                        variant_response = requests.post(
-                            self.graphql_url,
-                            headers=self.headers,
-                            json={
-                                'query': variant_mutation,
-                                'variables': {
-                                    'input': variant_input_payload
-                                }
-                            },
-                            timeout=30
-                        )
-                        variant_response.raise_for_status()
-                        variant_result = variant_response.json()
-                        
-                        # DEBUG: Log response for first few variants
-                        if idx < 3:
-                            print(f"DEBUG: Variant {idx+1} response: {variant_result}")
-                        
-                        if 'errors' in variant_result:
-                            error_messages = [e.get('message', str(e)) for e in variant_result['errors']]
-                            error_details = f"GraphQL errors for variant {variant_sku} ({idx+1}/{len(unique_variants)}): {', '.join(error_messages)}"
-                            print(f"❌ {error_details}")
-                            print(f"   Payload was: {variant_payload}")
-                            print(f"   Full response: {variant_result}")
-                            # Always log first 10 errors to understand the pattern
-                            if failed_count < 10:
-                                print(f"   Full variant_input: {variant_input}")
-                            failed_count += 1
-                            continue
-                        
-                        variant_create = variant_result.get('data', {}).get('productVariantCreate', {})
-                        variant_user_errors = variant_create.get('userErrors', [])
-                        
-                        if variant_user_errors:
-                            error_messages = [e.get('message', str(e)) for e in variant_user_errors]
-                            error_details = f"User errors for variant {variant_sku} ({idx+1}/{len(unique_variants)}): {', '.join(error_messages)}"
-                            print(f"❌ {error_details}")
-                            print(f"   Payload was: {variant_payload}")
-                            print(f"   Full response: {variant_result}")
-                            # Always log first 10 errors to understand the pattern
-                            if failed_count < 10:
-                                print(f"   Full variant_input: {variant_input}")
-                            failed_count += 1
-                            continue
-                        
-                        variant_node = variant_create.get('productVariant', {})
-                        if variant_node:
-                            variant_id_str = variant_node.get('id', '').replace('gid://shopify/ProductVariant/', '')
-                            variant_id = int(variant_id_str) if variant_id_str.isdigit() else None
-                            variant_sku_created = variant_node.get('sku', '') or variant_sku
-                            variant_gid_created = variant_node.get('id', '')
-                            variants_list.append({
-                                'id': variant_id,
-                                'gid': variant_gid_created,
-                                'sku': variant_sku_created,
-                                'price': variant_node.get('price', '0')
-                            })
-                            created_count += 1
-                            if idx < 5 or (idx + 1) % 10 == 0:
-                                print(f"✅ Variant {idx+1}/{len(unique_variants)} created: SKU={variant_sku_created}, ID={variant_id}")
-                        else:
-                            error_msg = f"CRITICAL: Variant {variant_sku} mutation succeeded but no variant node returned in response"
-                            print(f"❌ {error_msg}")
-                            print(f"   Full response: {variant_result}")
-                            failed_count += 1
-                        
-                        time.sleep(0.1)
-                        
-                    except requests.exceptions.HTTPError as e:
-                        error_msg = f"HTTP Error creating variant {variant_sku} ({idx+1}/{len(unique_variants)}): {e}"
-                        if hasattr(e, 'response') and e.response is not None:
-                            try:
-                                error_body = e.response.json()
-                                error_msg += f" | Response: {error_body}"
-                            except:
-                                error_msg += f" | Response text: {e.response.text[:200]}"
-                        print(f"❌ {error_msg}")
-                        failed_count += 1
-                        continue
-                    except Exception as e:
-                        error_msg = f"Exception creating variant {variant_sku} ({idx+1}/{len(unique_variants)}): {type(e).__name__}: {str(e)}"
-                        print(f"❌ {error_msg}")
-                        import traceback
-                        print(f"   Traceback: {traceback.format_exc()[:300]}")
-                        failed_count += 1
-                        continue
-                
-                print(f"📊 Variant creation summary: {created_count} successful, {failed_count} failed out of {len(unique_variants)} total")
+                    print(f"📊 Variant creation summary: {created_count} successful, {failed_count} failed out of {len(unique_variants)} total")
+                    
+                except requests.exceptions.HTTPError as e:
+                    error_msg = f"HTTP Error creating variants: {e}"
+                    if hasattr(e, 'response') and e.response is not None:
+                        try:
+                            error_body = e.response.json()
+                            error_msg += f" | Response: {error_body}"
+                        except:
+                            error_msg += f" | Response text: {e.response.text[:500]}"
+                    print(f"❌ {error_msg}")
+                    created_count = 0
+                    failed_count = len(unique_variants)
+                except Exception as e:
+                    error_msg = f"Exception creating variants: {type(e).__name__}: {str(e)}"
+                    print(f"❌ {error_msg}")
+                    import traceback
+                    print(f"   Traceback: {traceback.format_exc()[:500]}")
+                    created_count = 0
+                    failed_count = len(unique_variants)
                 
                 # CRITICAL: If no variants were created, this is a fatal error
                 if created_count == 0:
