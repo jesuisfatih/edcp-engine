@@ -75,66 +75,164 @@ class DataFetcher:
     def _get_products_to_sync(self, filter_options: Dict) -> List[Dict]:
         """
         Get products from S&S API with filtering
-        This is similar to SyncManager._get_products_to_sync but returns raw products
+        Uses the same logic as SyncManager._get_products_to_sync for consistency
         """
+        # Normalize filters (same as sync_manager)
+        category_ids = filter_options.get('filter_categories', [])
+        if isinstance(category_ids, list):
+            category_list = [str(cid).strip() for cid in category_ids if cid]
+        elif isinstance(category_ids, str):
+            category_list = [c.strip() for c in category_ids.split(',') if c.strip()]
+        else:
+            category_list = [str(category_ids).strip()] if category_ids else []
+        
+        style_ids = filter_options.get('filter_styles', [])
+        if isinstance(style_ids, list):
+            style_list = []
+            for sid in style_ids:
+                if sid:
+                    try:
+                        style_list.append(int(sid))
+                    except (ValueError, TypeError):
+                        pass
+        elif isinstance(style_ids, str):
+            style_list = []
+            for sid in style_ids.split(','):
+                sid = sid.strip()
+                if sid and sid.isdigit():
+                    style_list.append(int(sid))
+        else:
+            style_list = [int(style_ids)] if style_ids and str(style_ids).isdigit() else []
+        
+        brand_filters = filter_options.get('filter_brands', [])
+        brand_names = []
+        if isinstance(brand_filters, list):
+            for bf in brand_filters:
+                bf_str = str(bf).strip()
+                if bf_str and not bf_str.isdigit():
+                    brand_names.append(bf_str)
+        elif isinstance(brand_filters, str):
+            brand_names = [b.strip() for b in brand_filters.split(',') if b.strip() and not b.strip().isdigit()]
+        else:
+            brand_names = [str(brand_filters).strip()] if brand_filters and not str(brand_filters).isdigit() else []
+        
+        print(f"=== DATA FETCHER FILTERING DEBUG ===")
+        print(f"Categories: {category_list}")
+        print(f"Styles: {style_list}")
+        print(f"Brands: {brand_names}")
+        
         all_products = []
         
-        # Get all products (with pagination)
-        try:
-            # Use API-level filtering if possible
-            style_list = filter_options.get('filter_styles', [])
-            if style_list and len(style_list) > 0:
-                # Filter by style IDs using API
-                for style_id in style_list:
-                    try:
-                        style_products = self.ss_client.get_products(styleid=str(style_id), limit=5000)
-                        all_products.extend(style_products)
-                    except Exception as e:
-                        print(f"⚠️ Error fetching products for style {style_id}: {e}")
-            else:
-                # Fetch all products (with limit)
-                all_products = self.ss_client.get_products(limit=5000)
-        except Exception as e:
-            print(f"❌ Error fetching products: {e}")
-            return []
-        
-        # Apply filters
-        filtered_products = []
-        
-        # Filter by categories
-        category_list = filter_options.get('filter_categories', [])
-        if category_list:
-            category_list = [str(c) for c in category_list]  # Normalize to strings
-            for product in all_products:
-                product_categories = product.get('categories', '')
-                if product_categories:
-                    product_cat_list = [c.strip() for c in str(product_categories).split(',')]
-                    if any(cat in product_cat_list for cat in category_list):
-                        filtered_products.append(product)
-                else:
-                    # If no categories, skip if category filter is active
-                    pass
+        # CRITICAL: Use API-level filtering for styles (much more efficient)
+        if style_list:
+            print(f"Using API-level filtering for {len(style_list)} styles...")
+            styleid_param = ','.join([str(sid) for sid in style_list])
+            print(f"Fetching products with styleid={styleid_param}")
+            
+            try:
+                # Use API's styleid filter
+                products = self.ss_client.get_products(styleid=styleid_param, limit=5000)
+                print(f"API returned {len(products)} products for selected styles")
+                all_products = products
+            except Exception as e:
+                print(f"Error with styleid filter: {e}")
+                # Fallback: get all and filter in memory
+                print("Falling back to memory filtering...")
+                products = self.ss_client.get_products(limit=5000)
+                filtered = []
+                for product in products:
+                    product_style_id = product.get('styleID')
+                    if product_style_id:
+                        try:
+                            if int(product_style_id) in style_list:
+                                filtered.append(product)
+                        except:
+                            pass
+                all_products = filtered
+                print(f"Memory filter found {len(all_products)} products")
         else:
-            filtered_products = all_products
+            # No style filter, get all products
+            print("No style filter, fetching all products...")
+            all_products = self.ss_client.get_products(limit=5000)
+            print(f"Fetched {len(all_products)} products")
         
-        # Filter by brands
-        brand_list = filter_options.get('filter_brands', [])
-        if brand_list:
-            filtered_products = [
-                p for p in filtered_products 
-                if p.get('brandName', '').strip() in [b.strip() for b in brand_list]
-            ]
+        # CRITICAL FIX: If styles were selected, SKIP category filter
+        # Styles are already filtered by category, applying category filter would remove all products
+        if category_list and all_products:
+            if style_list:
+                print(f"SKIPPING category filter - already filtered by {len(style_list)} styles")
+                print(f"  Selected categories: {category_list} (will be ignored)")
+                print(f"  Reason: Styles are already filtered by categories, applying category filter would remove all products")
+            else:
+                # Only apply category filter if no style filter was used
+                print(f"Filtering {len(all_products)} products by {len(category_list)} categories...")
+                filtered = []
+                for product in all_products:
+                    product_cats = product.get('categories', '')
+                    if product_cats:
+                        # Handle both string and list formats
+                        if isinstance(product_cats, list):
+                            product_cat_list = [str(c).strip() for c in product_cats if c]
+                        else:
+                            product_cat_list = [c.strip() for c in str(product_cats).split(',') if c.strip()]
+                        
+                        # Check if any selected category matches
+                        matched = False
+                        for cat in category_list:
+                            cat_str = str(cat).strip()
+                            if cat_str in product_cat_list:
+                                matched = True
+                                break
+                            # Try as integer match
+                            try:
+                                if int(cat_str) in [int(c) for c in product_cat_list if c.isdigit()]:
+                                    matched = True
+                                    break
+                            except:
+                                pass
+                        
+                        if matched:
+                            filtered.append(product)
+                
+                all_products = filtered
+                print(f"After category filter: {len(all_products)} products")
         
-        # Filter by part numbers
-        part_number_list = filter_options.get('filter_part_numbers', [])
-        if part_number_list:
-            filtered_products = [
-                p for p in filtered_products 
-                if p.get('partNumber', '').strip() in [pn.strip() for pn in part_number_list]
-            ]
+        # Filter by brands if selected
+        if brand_names and all_products:
+            print(f"Filtering {len(all_products)} products by {len(brand_names)} brands...")
+            filtered = []
+            for product in all_products:
+                product_brand = product.get('brandName', '').strip()
+                if product_brand in brand_names:
+                    filtered.append(product)
+            all_products = filtered
+            print(f"After brand filter: {len(all_products)} products")
         
-        print(f"📊 Filtered products: {len(filtered_products)} from {len(all_products)} total")
-        return filtered_products
+        # Remove duplicates by SKU
+        seen_skus = set()
+        unique_products = []
+        for product in all_products:
+            sku = product.get('sku')
+            if sku and sku not in seen_skus:
+                seen_skus.add(sku)
+                unique_products.append(product)
+        
+        print(f"=== FINAL RESULT ===")
+        print(f"Total unique products: {len(unique_products)}")
+        
+        if not unique_products:
+            print("ERROR: No products found after all filters!")
+            print(f"  Category filter: {category_list}")
+            print(f"  Style filter: {style_list}")
+            print(f"  Brand filter: {brand_names}")
+            # Show sample product for debugging
+            if all_products:
+                sample = all_products[0]
+                print(f"  Sample product categories: {sample.get('categories')}")
+                print(f"  Sample product styleID: {sample.get('styleID')}")
+                print(f"  Sample product brand: {sample.get('brandName')}")
+        
+        return unique_products
     
     def get_cached_products(self) -> List[Dict]:
         """Get all cached products from database"""
