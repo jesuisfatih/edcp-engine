@@ -89,52 +89,48 @@ class ShopifyClient:
             raise Exception(f"Failed to connect to Shopify: {str(e)}")
     
     def get_collections(self) -> List[Dict]:
-        """Get all collections"""
+        """Get all collections via GraphQL (custom + smart)"""
         try:
+            query = """
+            query ($cursor: String) {
+                collections(first: 100, after: $cursor) {
+                    pageInfo { hasNextPage endCursor }
+                    edges {
+                        node {
+                            id
+                            title
+                            handle
+                            ruleSet { appliedDisjunctively }
+                        }
+                    }
+                }
+            }
+            """
             all_collections = []
-            
-            if self.use_library:
-                collections = shopify.CustomCollection.find()
-                smart_collections = shopify.SmartCollection.find()
-                
-                for coll in collections:
+            cursor = None
+            while True:
+                resp = requests.post(
+                    self.graphql_url,
+                    headers=self.headers,
+                    json={'query': query, 'variables': {'cursor': cursor}},
+                    timeout=30
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                edges = data.get('data', {}).get('collections', {}).get('edges', [])
+                for edge in edges:
+                    node = edge.get('node', {})
                     all_collections.append({
-                        'id': coll.id,
-                        'title': coll.title,
-                        'handle': coll.handle,
-                        'type': 'custom'
+                        'id': node.get('id'),
+                        'title': node.get('title'),
+                        'handle': node.get('handle'),
+                        'type': 'smart' if node.get('ruleSet') else 'custom'
                     })
-                
-                for coll in smart_collections:
-                    all_collections.append({
-                        'id': coll.id,
-                        'title': coll.title,
-                        'handle': coll.handle,
-                        'type': 'smart'
-                    })
-            else:
-                # Get custom collections
-                response = requests.get(f"{self.base_url}/custom_collections.json", headers=self.headers)
-                response.raise_for_status()
-                for coll in response.json().get('custom_collections', []):
-                    all_collections.append({
-                        'id': coll['id'],
-                        'title': coll['title'],
-                        'handle': coll['handle'],
-                        'type': 'custom'
-                    })
-                
-                # Get smart collections
-                response = requests.get(f"{self.base_url}/smart_collections.json", headers=self.headers)
-                response.raise_for_status()
-                for coll in response.json().get('smart_collections', []):
-                    all_collections.append({
-                        'id': coll['id'],
-                        'title': coll['title'],
-                        'handle': coll['handle'],
-                        'type': 'smart'
-                    })
-            
+                page_info = data.get('data', {}).get('collections', {}).get('pageInfo', {}) if data.get('data') else {}
+                if page_info.get('hasNextPage') and page_info.get('endCursor'):
+                    cursor = page_info['endCursor']
+                    continue
+                break
             return all_collections
         except Exception as e:
             raise Exception(f"Failed to get collections: {str(e)}")
@@ -1917,38 +1913,63 @@ class ShopifyClient:
     def delete_product(self, product_id: int):
         """Delete a product from Shopify"""
         try:
-            if self.use_library:
-                product = shopify.Product.find(product_id)
-                if product:
-                    product.destroy()
-            else:
-                response = requests.delete(
-                    f"{self.base_url}/products/{product_id}.json",
-                    headers=self.headers,
-                    timeout=30
-                )
-                response.raise_for_status()
+            mutation = """
+            mutation productDelete($input: ProductDeleteInput!) {
+                productDelete(input: $input) {
+                    deletedProductId
+                    shop {
+                        id
+                    }
+                    userErrors {
+                        field
+                        message
+                    }
+                }
+            }
+            """
+            variables = {'input': {'id': f"gid://shopify/Product/{product_id}"}}
+            resp = requests.post(
+                self.graphql_url,
+                headers=self.headers,
+                json={'query': mutation, 'variables': variables},
+                timeout=30
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            if 'errors' in data:
+                raise Exception(data['errors'])
+            user_errors = data.get('data', {}).get('productDelete', {}).get('userErrors', [])
+            if user_errors:
+                raise Exception(user_errors)
         except Exception as e:
             raise Exception(f"Failed to delete product: {str(e)}")
-    
+
     def delete_collection(self, collection_id: int, collection_type: str = 'custom'):
         """Delete a collection from Shopify"""
         try:
-            if self.use_library:
-                if collection_type == 'custom':
-                    collection = shopify.CustomCollection.find(collection_id)
-                else:
-                    collection = shopify.SmartCollection.find(collection_id)
-                if collection:
-                    collection.destroy()
-            else:
-                endpoint = 'custom_collections' if collection_type == 'custom' else 'smart_collections'
-                response = requests.delete(
-                    f"{self.base_url}/{endpoint}/{collection_id}.json",
-                    headers=self.headers,
-                    timeout=30
-                )
-                response.raise_for_status()
+            mutation = """
+            mutation collectionDelete($id: ID!) {
+                collectionDelete(id: $id) {
+                    deletedCollectionId
+                    userErrors { field message }
+                }
+            }
+            """
+            gid_prefix = "gid://shopify/Collection/"
+            variables = {'id': f"{gid_prefix}{collection_id}"}
+            resp = requests.post(
+                self.graphql_url,
+                headers=self.headers,
+                json={'query': mutation, 'variables': variables},
+                timeout=30
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            if 'errors' in data:
+                raise Exception(data['errors'])
+            user_errors = data.get('data', {}).get('collectionDelete', {}).get('userErrors', [])
+            if user_errors:
+                raise Exception(user_errors)
         except Exception as e:
             raise Exception(f"Failed to delete collection: {str(e)}")
     
