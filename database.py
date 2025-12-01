@@ -90,10 +90,90 @@ def init_database():
         except Exception as e:
             print(f"Warning: Could not add created_by_api column: {e}")
         
+        # NEW ARCHITECTURE: Products cache table - stores S&S products locally
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS ss_products_cache (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sku TEXT UNIQUE NOT NULL,
+                style_id INTEGER,
+                part_number TEXT,
+                brand_name TEXT,
+                style_name TEXT,
+                color_name TEXT,
+                size_name TEXT,
+                product_data TEXT NOT NULL,
+                fetched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                sync_id TEXT,
+                FOREIGN KEY (sync_id) REFERENCES sync_history(sync_id)
+            )
+        ''')
+        
+        # Variants table - grouped variants for Shopify products
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS product_variants (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                product_group_id TEXT NOT NULL,
+                sku TEXT NOT NULL,
+                color_name TEXT,
+                size_name TEXT,
+                price TEXT,
+                inventory_quantity INTEGER,
+                barcode TEXT,
+                weight REAL,
+                weight_unit TEXT,
+                variant_image_url TEXT,
+                variant_metafields TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(product_group_id, sku)
+            )
+        ''')
+        
+        # Product groups table - groups variants by styleID
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS product_groups (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                group_id TEXT UNIQUE NOT NULL,
+                style_id INTEGER,
+                title TEXT NOT NULL,
+                description TEXT,
+                vendor TEXT,
+                product_type TEXT,
+                base_category TEXT,
+                product_images TEXT,
+                product_metafields TEXT,
+                tags TEXT,
+                collections TEXT,
+                status TEXT DEFAULT 'pending',
+                shopify_product_id INTEGER,
+                sync_id TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                synced_at TIMESTAMP
+            )
+        ''')
+        
+        # Product images table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS product_images (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                product_group_id TEXT NOT NULL,
+                image_url TEXT NOT NULL,
+                image_type TEXT,
+                variant_sku TEXT,
+                sort_order INTEGER DEFAULT 0,
+                FOREIGN KEY (product_group_id) REFERENCES product_groups(group_id)
+            )
+        ''')
+        
         # Create indexes for faster lookups
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_sync_products_sync_id ON sync_products(sync_id)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_sync_products_sku ON sync_products(sku)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_sync_history_sync_id ON sync_history(sync_id)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_ss_products_cache_sku ON ss_products_cache(sku)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_ss_products_cache_style_id ON ss_products_cache(style_id)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_product_variants_group_id ON product_variants(product_group_id)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_product_groups_group_id ON product_groups(group_id)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_product_groups_style_id ON product_groups(style_id)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_product_images_group_id ON product_images(product_group_id)')
         
         conn.commit()
 

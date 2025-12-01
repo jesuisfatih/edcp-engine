@@ -1,11 +1,14 @@
 from ss_api_client import SSActivewearClient
 from shopify_client import ShopifyClient
+from data_fetcher import DataFetcher
+from variant_grouper import VariantGrouper
 from typing import Dict, List, Optional
 import time
 import uuid
 from datetime import datetime
 from database import save_sync_state, get_sync_state, save_sync_product, save_sync_history
 import requests
+import json
 
 class SyncManager:
     """Manages synchronization between S&S Activewear and Shopify"""
@@ -40,7 +43,7 @@ class SyncManager:
         self.message = 'Sync stopped by user'
     
     def start_sync(self):
-        """Start synchronization process"""
+        """Start synchronization process - NEW ARCHITECTURE: Fetch -> Cache -> Group -> Sync"""
         self.status = 'running'
         self.message = 'Starting synchronization...'
         self.progress = 0
@@ -48,21 +51,34 @@ class SyncManager:
         self.current_index = 0
         
         try:
-            # Get all products from S&S Activewear
+            # STEP 1: Fetch products from S&S API and cache in local database
             self.message = 'Fetching products from S&S Activewear...'
-            self.progress = 5  # Show initial progress
+            self.progress = 5
             
             try:
-                # Update progress during fetch
-                products = []
-                self.message = 'Fetching products from S&S Activewear (this may take a moment)...'
+                data_fetcher = DataFetcher(self.ss_client, self.sync_id)
+                cached_count = data_fetcher.fetch_and_cache_products(self.sync_options)
                 
-                # Get products in chunks to show progress
-                products = self._get_products_to_sync()
+                if cached_count == 0:
+                    self.status = 'completed'
+                    filter_info = []
+                    if self.sync_options.get('filter_categories'):
+                        cats = self.sync_options.get('filter_categories')
+                        filter_info.append(f"Kategoriler: {cats if isinstance(cats, list) else str(cats)}")
+                    if self.sync_options.get('filter_styles'):
+                        styles = self.sync_options.get('filter_styles')
+                        filter_info.append(f"Stiller: {styles if isinstance(styles, list) else str(styles)}")
+                    if self.sync_options.get('filter_brands'):
+                        brands = self.sync_options.get('filter_brands')
+                        filter_info.append(f"Markalar: {brands if isinstance(brands, list) else str(brands)}")
+                    
+                    filter_msg = '. '.join(filter_info) if filter_info else 'Filtre yok'
+                    self.message = f'Ürün bulunamadı. Seçilen filtreler: {filter_msg}. Lütfen filtreleri kontrol edin veya farklı filtreler deneyin.'
+                    self.progress = 100
+                    return
                 
-                # Update progress after fetch
-                self.progress = 10
-                self.message = f'Fetched {len(products)} products from S&S Activewear'
+                self.progress = 20
+                self.message = f'Cached {cached_count} products to local database'
                 
             except Exception as e:
                 error_msg = str(e)
@@ -87,47 +103,48 @@ class SyncManager:
                     })
                     return
             
-            if not products:
-                self.status = 'completed'
-                filter_info = []
-                if self.sync_options.get('filter_categories'):
-                    cats = self.sync_options.get('filter_categories')
-                    filter_info.append(f"Kategoriler: {cats if isinstance(cats, list) else str(cats)}")
-                if self.sync_options.get('filter_styles'):
-                    styles = self.sync_options.get('filter_styles')
-                    filter_info.append(f"Stiller: {styles if isinstance(styles, list) else str(styles)}")
-                if self.sync_options.get('filter_brands'):
-                    brands = self.sync_options.get('filter_brands')
-                    filter_info.append(f"Markalar: {brands if isinstance(brands, list) else str(brands)}")
+            # STEP 2: Group products by styleID
+            self.message = 'Grouping products by styleID...'
+            self.progress = 25
+            
+            try:
+                grouper = VariantGrouper(self.sync_id, self.sync_options)
+                groups_count = grouper.group_products()
                 
-                filter_msg = '. '.join(filter_info) if filter_info else 'Filtre yok'
-                self.message = f'Ürün bulunamadı. Seçilen filtreler: {filter_msg}. Lütfen filtreleri kontrol edin veya farklı filtreler deneyin.'
+                if groups_count == 0:
+                    self.status = 'error'
+                    self.message = 'No product groups created'
+                    return
+                
+                self.progress = 30
+                self.message = f'Created {groups_count} product groups'
+                
+            except Exception as e:
+                self.status = 'error'
+                self.message = f'Error grouping products: {str(e)}'
+                self.errors.append({
+                    'error': str(e),
+                    'timestamp': datetime.now().isoformat()
+                })
+                return
+            
+            # STEP 3: Get product groups from database and sync to Shopify
+            self.message = 'Syncing product groups to Shopify...'
+            self.progress = 35
+            
+            product_groups = grouper.get_product_groups(status='pending')
+            total_groups = len(product_groups)
+            self.stats['total'] = total_groups
+            
+            if total_groups == 0:
+                self.status = 'completed'
+                self.message = 'No product groups to sync'
                 self.progress = 100
                 return
             
-            self.stats['total'] = len(products)
-            self.message = f'Found {len(products)} products to sync. Starting transfer...'
-            self.progress = 15
-            
-            # Group products by styleID to combine variants
-            products_by_style = {}
-            for product in products:
-                style_id = product.get('styleID')
-                if style_id:
-                    if style_id not in products_by_style:
-                        products_by_style[style_id] = []
-                    products_by_style[style_id].append(product)
-                else:
-                    # Products without styleID are handled individually
-                    if 'no_style' not in products_by_style:
-                        products_by_style['no_style'] = []
-                    products_by_style['no_style'].append(product)
-            
-            # Process grouped products (each group = one Shopify product with multiple variants)
-            total_groups = len(products_by_style)
             processed_groups = 0
             
-            for style_id, style_products in products_by_style.items():
+            for group in product_groups:
                 if self._stop_flag:
                     self.status = 'stopped'
                     self.message = 'Sync stopped by user'
@@ -137,37 +154,43 @@ class SyncManager:
                 self.current_index = processed_groups - 1
                 
                 # Update progress
-                progress_pct = 15 + int(processed_groups / total_groups * 85)
+                progress_pct = 35 + int(processed_groups / total_groups * 60)
                 self.progress = progress_pct
                 
-                # Use first product for display info
-                first_product = style_products[0]
-                product_name = f"{first_product.get('brandName', '')} {first_product.get('styleName', '')}".strip()
-                if not product_name:
-                    product_name = first_product.get('sku', 'Unknown Product')
+                group_id = group['group_id']
+                product_name = group.get('title', 'Unknown Product')
                 
-                self.message = f'Processing {processed_groups}/{total_groups}: {product_name} ({len(style_products)} variants)'
-                self.current_product = first_product  # For display
+                self.message = f'Processing {processed_groups}/{total_groups}: {product_name}'
                 
                 try:
-                    # Sync grouped products as one product with variants
-                    self._sync_product_group(style_products)
-                    self.stats['processed'] += len(style_products)
-                except Exception as e:
-                    self.stats['errors'] += len(style_products)
-                    error_msg = str(e)
-                    for product in style_products:
-                        self.errors.append({
-                            'sku': product.get('sku', 'unknown'),
-                            'error': error_msg,
-                            'timestamp': datetime.now().isoformat()
-                        })
+                    # Get variants and images for this group
+                    variants = grouper.get_variants_for_group(group_id)
+                    images = grouper.get_images_for_group(group_id)
+                    
+                    # Build Shopify product data
+                    product_data = self._build_product_data_from_group(group, variants, images)
+                    
+                    # Sync to Shopify
+                    self._sync_product_from_group(group_id, product_data, variants)
+                    
+                    # Update group status
+                    self._update_group_status(group_id, 'synced')
+                    
+                    self.stats['processed'] += len(variants)
                 
-                # Rate limiting - increased to avoid 429 errors
+                except Exception as e:
+                    self.stats['errors'] += len(variants) if 'variants' in locals() else 1
+                    error_msg = str(e)
+                    self.errors.append({
+                        'sku': group_id,
+                        'error': error_msg,
+                        'timestamp': datetime.now().isoformat()
+                    })
+                    # Update group status to error
+                    self._update_group_status(group_id, 'error')
+                
+                # Rate limiting
                 time.sleep(0.5)
-            
-            # Update total count
-            self.stats['total'] = len(products)
             
             # Clear current product when done
             self.current_product = None
@@ -176,7 +199,7 @@ class SyncManager:
             self.status = 'completed'
             self.message = f'Sync completed: {self.stats["created"]} created, {self.stats["updated"]} updated, {self.stats["errors"]} errors'
             # Save final state
-            save_sync_state(self.sync_id, self.status, 100, len(products), len(products), self.stats)
+            save_sync_state(self.sync_id, self.status, 100, total_groups, total_groups, self.stats)
             # Save sync history
             save_sync_history(
                 self.sync_id,
@@ -539,6 +562,156 @@ class SyncManager:
                 raise
         
         return []
+    
+    def _build_product_data_from_group(self, group: Dict, variants: List[Dict], images: List[Dict]) -> Dict:
+        """Build Shopify product data from database group"""
+        # Build variants list
+        variant_list = []
+        variant_images_map = {}
+        
+        for variant in variants:
+            variant_data = {
+                'sku': variant.get('sku', ''),
+                'price': variant.get('price', '0'),
+                'inventory_quantity': variant.get('inventory_quantity'),
+                'option1': variant.get('color_name', ''),
+                'option2': variant.get('size_name', ''),
+                'barcode': variant.get('barcode'),
+                'weight': variant.get('weight', 0),
+                'weight_unit': variant.get('weight_unit', 'lb')
+            }
+            
+            # Add variant image
+            if variant.get('variant_image_url'):
+                variant_data['image'] = variant['variant_image_url']
+                variant_images_map[variant.get('sku', '')] = variant['variant_image_url']
+            
+            # Add variant metafields
+            if variant.get('variant_metafields'):
+                variant_data['metafields'] = variant['variant_metafields']
+            
+            variant_list.append(variant_data)
+        
+        # Build product images
+        product_images = [img['image_url'] for img in images if img.get('image_type') == 'product']
+        
+        # Build collections (if needed)
+        collections = []
+        if self.sync_options.get('sync_collections', True):
+            create_if_not_exists = self.sync_options.get('create_collections', True)
+            
+            # Add category collections
+            if group.get('base_category'):
+                try:
+                    if create_if_not_exists:
+                        coll = self.shopify_client.find_or_create_collection(
+                            group['base_category'],
+                            handle=group['base_category'].lower().replace(' ', '-').replace('&', 'and')
+                        )
+                        collections.append(coll['id'])
+                except Exception:
+                    pass
+            
+            # Add brand collection
+            if group.get('vendor') and self.sync_options.get('create_brand_collections', True):
+                try:
+                    if create_if_not_exists:
+                        coll = self.shopify_client.find_or_create_collection(
+                            group['vendor'],
+                            handle=group['vendor'].lower().replace(' ', '-').replace('&', 'and')
+                        )
+                        collections.append(coll['id'])
+                except Exception:
+                    pass
+        
+        # Build product data
+        product_data = {
+            'title': group.get('title', 'Product'),
+            'description': group.get('description', '') or '',
+            'vendor': group.get('vendor', ''),
+            'product_type': group.get('product_type', ''),
+            'tags': group.get('tags', ''),
+            'status': 'active' if self.sync_options.get('set_active', True) else 'draft',
+            'images': product_images,
+            'variants': variant_list,
+            'collections': collections,
+            'metafields': group.get('product_metafields', {})
+        }
+        
+        return product_data
+    
+    def _sync_product_from_group(self, group_id: str, product_data: Dict, variants: List[Dict]):
+        """Sync a product group to Shopify"""
+        product_title = product_data.get('title', '')
+        
+        # Search for existing product
+        existing_product = None
+        if product_title:
+            existing_product = self.shopify_client.get_product_by_title(product_title)
+        
+        if existing_product:
+            # Update existing product
+            if self.sync_options.get('update_existing', True):
+                self.shopify_client.update_product(existing_product['id'], product_data)
+                self.stats['updated'] += 1
+                
+                # Save to database for rollback
+                shopify_variants = existing_product.get('variants', [])
+                if shopify_variants:
+                    for variant in shopify_variants:
+                        variant_id = variant.get('id') if isinstance(variant, dict) else None
+                        variant_sku = variant.get('sku', '') if isinstance(variant, dict) else ''
+                        if variant_id and variant_sku:
+                            save_sync_product(self.sync_id, existing_product['id'], variant_id, variant_sku, 'updated')
+        else:
+            # Create new product
+            if self.sync_options.get('create_new', True):
+                result = self.shopify_client.create_product(product_data)
+                
+                if result.get('status') == 'exists':
+                    # Product already exists, update it
+                    print(f"Product already exists, updating: {result['id']}")
+                    self.shopify_client.update_product(result['id'], product_data)
+                    self.stats['updated'] += 1
+                else:
+                    # New product created
+                    self.stats['created'] += 1
+                    
+                    # Save to database for rollback
+                    shopify_variants = result.get('variants', [])
+                    if shopify_variants:
+                        for variant in shopify_variants:
+                            variant_id = variant.get('id') if isinstance(variant, dict) else None
+                            variant_sku = variant.get('sku', '') if isinstance(variant, dict) else ''
+                            if variant_id and variant_sku:
+                                save_sync_product(self.sync_id, result['id'], variant_id, variant_sku, 'created')
+                    
+                    # Update group with Shopify product ID
+                    self._update_group_shopify_id(group_id, result['id'])
+    
+    def _update_group_status(self, group_id: str, status: str):
+        """Update product group status in database"""
+        from database import get_db
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                UPDATE product_groups 
+                SET status = ?, synced_at = CURRENT_TIMESTAMP
+                WHERE group_id = ?
+            ''', (status, group_id))
+            conn.commit()
+    
+    def _update_group_shopify_id(self, group_id: str, shopify_product_id: int):
+        """Update product group with Shopify product ID"""
+        from database import get_db
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                UPDATE product_groups 
+                SET shopify_product_id = ?
+                WHERE group_id = ?
+            ''', (shopify_product_id, group_id))
+            conn.commit()
     
     def _sync_product_group(self, ss_products: List[Dict]):
         """Sync a group of products (same styleID) as one Shopify product with variants"""
