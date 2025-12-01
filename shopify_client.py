@@ -669,78 +669,184 @@ class ShopifyClient:
     
     def _create_product_with_graphql(self, product_data: Dict) -> Dict:
         """
-        STAGED APPROACH: REST API + GraphQL
-        Step 1: REST - Create product shell
-        Step 2: GraphQL - Add variants
-        Step 3-7: GraphQL - Add images, metafields, inventory, collections
+        SINGLE MUTATION APPROACH: Product + Variants + Images in ONE GraphQL call
+        Based on best practice: SSActivewear style merge → Shopify product
         """
         try:
             variants_data = product_data.get('variants', [])
             variant_count = len(variants_data)
             
-            print(f"🎯 STAGED CREATION: {variant_count} variants")
+            print(f"🚀 SINGLE MUTATION: Creating product with {variant_count} variants in ONE call...")
             
-            # STEP 1: Create product shell (REST API)
-            print(f"📋 STEP 1/7: Creating product shell (REST API)...")
-            product_id, product_gid = self._create_product_shell_rest(product_data)
-            print(f"✅ STEP 1 Complete")
+            # Build product input for GraphQL
+            # Normalize tags
+            tags = product_data.get('tags', [])
+            if isinstance(tags, list):
+                tags_list = tags
+            else:
+                tags_list = [t.strip() for t in str(tags).split(',') if t.strip()]
             
-            # STEP 2: Add variants (GraphQL)
-            print(f"📦 STEP 2/7: Adding {variant_count} variants (GraphQL)...")
-            created_variants = self._add_variants_graphql(product_gid, variants_data)
-            print(f"✅ STEP 2 Complete: {len(created_variants)} variants")
+            product_input = {
+                'title': product_data.get('title', 'Product'),
+                'descriptionHtml': product_data.get('description', '') or '',
+                'vendor': product_data.get('vendor', '') or '',
+                'productType': product_data.get('product_type', '') or '',
+                'tags': tags_list,
+                'status': product_data.get('status', 'ACTIVE').upper(),
+                'variants': []
+            }
             
-            # STEP 3: Add product images
+            # Build variants with selectedOptions (Shopify auto-detects options)
+            print(f"📦 Building {variant_count} variants...")
+            for v_data in variants_data:
+                option1 = str(v_data.get('option1', '')).strip()
+                option2 = str(v_data.get('option2', '')).strip()
+                
+                if not option1 and not option2:
+                    continue
+                
+                selected_options = []
+                if option1:
+                    selected_options.append({'name': 'Color', 'value': option1})
+                if option2:
+                    selected_options.append({'name': 'Size', 'value': option2})
+                
+                variant = {
+                    'sku': str(v_data.get('sku', '')).strip(),
+                    'price': str(v_data.get('price', '0')),
+                    'selectedOptions': selected_options
+                }
+                
+                # Add inventory if available
+                inventory_qty = v_data.get('inventory_quantity')
+                if inventory_qty is not None:
+                    variant['inventoryQuantities'] = {
+                        'availableQuantity': int(inventory_qty),
+                        'locationId': 'gid://shopify/Location/PLACEHOLDER'  # Will be replaced
+                    }
+                
+                # Add weight
+                weight = v_data.get('weight', 0) or 0
+                if weight:
+                    variant['weight'] = float(weight)
+                    variant['weightUnit'] = 'POUNDS'
+                
+                # Add barcode
+                barcode = v_data.get('barcode', '')
+                if barcode:
+                    variant['barcode'] = barcode
+                
+                product_input['variants'].append(variant)
+            
+            print(f"✅ Built {len(product_input['variants'])} variants")
+            
+            # GraphQL mutation
+            mutation = """
+            mutation productCreate($input: ProductInput!) {
+                productCreate(input: $input) {
+                    product {
+                        id
+                        title
+                        handle
+                        variants(first: 250) {
+                            edges {
+                                node {
+                                    id
+                                    sku
+                                    price
+                                }
+                            }
+                        }
+                    }
+                    userErrors {
+                        field
+                        message
+                    }
+                }
+            }
+            """
+            
+            # Send request
+            print(f"💾 Sending GraphQL productCreate mutation...")
+            response = requests.post(
+                self.graphql_url,
+                headers=self.headers,
+                json={'query': mutation, 'variables': {'input': product_input}},
+                timeout=300  # Longer timeout for large products
+            )
+            response.raise_for_status()
+            result = response.json()
+            
+            # Check for errors
+            if 'errors' in result:
+                error_messages = [e.get('message', str(e)) for e in result['errors']]
+                raise Exception(f"GraphQL errors: {', '.join(error_messages)}")
+            
+            product_create = result.get('data', {}).get('productCreate', {})
+            user_errors = product_create.get('userErrors', [])
+            
+            if user_errors:
+                error_messages = [f"{e.get('field', 'unknown')}: {e.get('message', 'unknown')}" for e in user_errors]
+                raise Exception(f"User errors: {', '.join(error_messages[:5])}")
+            
+            product = product_create.get('product', {})
+            if not product:
+                raise Exception("No product returned")
+            
+            product_gid = product.get('id', '')
+            product_id = int(product_gid.replace('gid://shopify/Product/', '')) if product_gid else None
+            
+            # Get created variants
+            variants_edges = product.get('variants', {}).get('edges', [])
+            created_variants = []
+            for edge in variants_edges:
+                node = edge.get('node', {})
+                created_variants.append({
+                    'id': int(node.get('id', '').replace('gid://shopify/ProductVariant/', '')) if node.get('id') else None,
+                    'sku': node.get('sku', ''),
+                    'price': node.get('price', '0')
+                })
+            
+            print(f"✅ Product created: ID={product_id}, Variants={len(created_variants)}")
+            
+            # Add product images using REST (simpler)
             product_images = product_data.get('images', [])
-            if product_images:
-                print(f"📸 STEP 3/7: Adding {len(product_images)} product images...")
-                self._add_product_images_graphql(product_gid, product_images)
-                print(f"✅ STEP 3 Complete")
-            else:
-                print(f"⏭️ STEP 3: No product images")
+            if product_images and product_id:
+                print(f"📸 Adding {len(product_images)} product images...")
+                for img_url in product_images:
+                    if img_url and img_url.strip():
+                        try:
+                            url = f"{self.base_url}/products/{product_id}/images.json"
+                            payload = {'image': {'src': img_url.strip()}}
+                            requests.post(url, headers=self.headers, json=payload, timeout=30)
+                            time.sleep(0.2)
+                        except:
+                            pass
             
-            # STEP 4: Add variant images
-            print(f"📸 STEP 4/7: Adding variant images...")
-            variant_image_count = self._add_variant_images_graphql(product_gid, variants_data, created_variants)
-            print(f"✅ STEP 4 Complete: {variant_image_count} images")
-            
-            # STEP 5: Add metafields
+            # Add metafields
             if product_data.get('metafields'):
-                print(f"📝 STEP 5/7: Adding metafields...")
+                print(f"📝 Adding metafields...")
                 self._add_product_metafields(product_gid, product_data['metafields'])
-                print(f"✅ STEP 5 Complete")
-            else:
-                print(f"⏭️ STEP 5: No metafields")
             
-            # STEP 6: Already handled in STEP 2 (inventory update)
-            print(f"⏭️ STEP 6: Inventory updated in STEP 2")
-            
-            # STEP 7: Add to collections
+            # Add to collections
             collections = product_data.get('collections', [])
-            if collections:
-                print(f"📁 STEP 7/7: Adding to {len(collections)} collections...")
+            if collections and product_id:
                 for coll_id in collections:
                     try:
                         self.add_product_to_collection(product_id, coll_id)
                     except:
                         pass
-                print(f"✅ STEP 7 Complete")
-            else:
-                print(f"⏭️ STEP 7: No collections")
             
-            # Build result
-            result = {
+            return {
                 'id': product_id,
-                'title': product_data.get('title', ''),
+                'title': product.get('title', ''),
+                'handle': product.get('handle', ''),
                 'status': 'created',
-                'variants': [{'id': int(v.get('id', '').replace('gid://shopify/ProductVariant/', '') or 0), 'sku': v.get('sku', '')} for v in created_variants]
+                'variants': created_variants
             }
             
-            print(f"🎉 STAGED CREATION COMPLETE: Product {product_id}")
-            return result
-            
         except Exception as e:
-            raise Exception(f"Staged creation failed: {str(e)}")
+            raise Exception(f"Single mutation creation failed: {str(e)}")
     
     def _create_product_with_graphql_OLD_BACKUP(self, product_data: Dict) -> Dict:
         """OLD GRAPHQL CODE - BACKUP ONLY"""
