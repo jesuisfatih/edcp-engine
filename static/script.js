@@ -1406,6 +1406,98 @@ function updateCurrentProductDisplay(product) {
     }
 }
 
+// Console log management
+let lastLogCount = 0;
+
+function updateConsoleLogs(logs) {
+    if (!logs || logs.length === 0) return;
+    
+    const consoleOutput = document.getElementById('transferConsole');
+    if (!consoleOutput) return;
+    
+    // Only add new logs (not already displayed)
+    if (logs.length > lastLogCount) {
+        const newLogs = logs.slice(lastLogCount);
+        
+        newLogs.forEach(log => {
+            const logLine = document.createElement('div');
+            logLine.className = `console-line log-${log.level || 'info'}`;
+            
+            const prompt = document.createElement('span');
+            prompt.className = 'console-prompt';
+            prompt.textContent = '$';
+            
+            const text = document.createElement('span');
+            text.className = 'console-text';
+            text.textContent = `[${log.timestamp}] ${log.message}`;
+            
+            logLine.appendChild(prompt);
+            logLine.appendChild(text);
+            consoleOutput.appendChild(logLine);
+        });
+        
+        lastLogCount = logs.length;
+        
+        // Auto-scroll to bottom
+        consoleOutput.scrollTop = consoleOutput.scrollHeight;
+    }
+}
+
+function clearConsole() {
+    const consoleOutput = document.getElementById('transferConsole');
+    if (consoleOutput) {
+        consoleOutput.innerHTML = '<div class="console-line"><span class="console-prompt">$</span><span class="console-text">Aktarım başlatıldı. Loglar burada görünecek...</span></div>';
+        lastLogCount = 0;
+    }
+}
+
+// Display created products with links
+function displayCreatedProducts(products) {
+    const productsCard = document.getElementById('createdProductsCard');
+    const productsList = document.getElementById('createdProductsList');
+    
+    if (!productsCard || !productsList) return;
+    
+    if (!products || products.length === 0) {
+        productsList.innerHTML = '<p class="text-muted">Aktarılan ürün bulunamadı.</p>';
+        productsCard.style.display = 'none';
+        return;
+    }
+    
+    productsCard.style.display = 'block';
+    
+    let html = `<div class="alert alert-success mb-3">
+        <strong>${products.length} ürün başarıyla aktarıldı!</strong>
+    </div>`;
+    
+    html += '<div class="list-group">';
+    
+    products.forEach((product, index) => {
+        html += `
+            <div class="product-link-item">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <strong>${index + 1}. ${product.title || 'Ürün'}</strong>
+                        <br>
+                        <small class="text-muted">ID: ${product.shopify_id} | Variants: ${product.variants_count || 0}</small>
+                    </div>
+                    <div>
+                        <a href="${product.product_url}" target="_blank" class="btn btn-sm btn-primary me-2">
+                            <i class="fas fa-external-link-alt"></i> Ürün Sayfası
+                        </a>
+                        <a href="${product.shopify_url}" target="_blank" class="btn btn-sm btn-secondary">
+                            <i class="fas fa-cog"></i> Admin
+                        </a>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    
+    html += '</div>';
+    productsList.innerHTML = html;
+}
+
 // Auto sync functions
 // Update actual product count
 async function updateActualProductCount() {
