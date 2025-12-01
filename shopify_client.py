@@ -169,6 +169,42 @@ class ShopifyClient:
             print(f"Warning: could not fetch primary location: {e}")
         return None
 
+    def get_all_location_ids(self) -> List[str]:
+        """Return all Shopify location IDs"""
+        ids: List[str] = []
+        try:
+            cursor = None
+            query = """
+            query ($cursor: String) {
+                locations(first: 50, after: $cursor) {
+                    pageInfo { hasNextPage endCursor }
+                    edges { node { id name } }
+                }
+            }
+            """
+            while True:
+                resp = requests.post(
+                    self.graphql_url,
+                    headers=self.headers,
+                    json={'query': query, 'variables': {'cursor': cursor}},
+                    timeout=30
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                edges = data.get('data', {}).get('locations', {}).get('edges', [])
+                for edge in edges:
+                    nid = edge.get('node', {}).get('id')
+                    if nid:
+                        ids.append(nid)
+                page_info = data.get('data', {}).get('locations', {}).get('pageInfo', {}) if data.get('data') else {}
+                if page_info.get('hasNextPage') and page_info.get('endCursor'):
+                    cursor = page_info['endCursor']
+                    continue
+                break
+        except Exception as e:
+            print(f"Warning: get_all_location_ids failed: {e}")
+        return ids
+
     def get_variant_by_sku(self, sku: str) -> Optional[Dict]:
         """Find a Shopify variant by SKU"""
         try:
@@ -273,11 +309,15 @@ class ShopifyClient:
             print(f"Warning: set_inventory_quantity failed: {e}")
             return False
 
-    def update_inventory_bulk(self, sku_qty_map: Dict[str, int]) -> Dict:
-        """Update inventory for SKUs using S&S qty as absolute value"""
+    def update_inventory_bulk(self, sku_qty_map: Dict[str, int], location_ids: Optional[List[str]] = None) -> Dict:
+        """Update inventory for SKUs using S&S qty as absolute value (applies to given locations or primary)"""
         results = {'updated': 0, 'failed': []}
-        location_id = self.get_primary_location_id()
-        if not location_id:
+        locs = location_ids or []
+        if not locs:
+            primary = self.get_primary_location_id()
+            if primary:
+                locs = [primary]
+        if not locs:
             results['failed'].append("No location_id available")
             return results
         for sku, qty in sku_qty_map.items():
@@ -286,12 +326,16 @@ class ShopifyClient:
                 if not variant or not variant.get('inventory_item_id'):
                     results['failed'].append(f"{sku}: variant not found")
                     continue
-                success = self.set_inventory_quantity(variant['inventory_item_id'], location_id, int(qty or 0))
-                if success:
+                ok_any = False
+                for loc in locs:
+                    success = self.set_inventory_quantity(variant['inventory_item_id'], loc, int(qty or 0))
+                    if success:
+                        ok_any = True
+                    else:
+                        results['failed'].append(f"{sku}: adjust failed for location {loc}")
+                    time.sleep(0.05)
+                if ok_any:
                     results['updated'] += 1
-                else:
-                    results['failed'].append(f"{sku}: adjust failed")
-                time.sleep(0.1)
             except Exception as e:
                 results['failed'].append(f"{sku}: {e}")
         return results

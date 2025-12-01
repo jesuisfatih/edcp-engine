@@ -61,8 +61,14 @@ class SyncManager:
                     sku = p.get('sku')
                     if sku:
                         sku_qty[sku] = p.get('qty', 0) or 0
+                # Choose locations: from sync_options or primary
+                loc_ids = self.sync_options.get('inventory_location_ids')
+                if loc_ids and isinstance(loc_ids, str):
+                    loc_ids = [l.strip() for l in loc_ids.split(',') if l.strip()]
+                if not loc_ids:
+                    loc_ids = None
                 self.message = f'Updating inventory for {len(sku_qty)} SKUs...'
-                result = self.shopify_client.update_inventory_bulk(sku_qty)
+                result = self.shopify_client.update_inventory_bulk(sku_qty, location_ids=loc_ids)
                 self.status = 'completed'
                 self.progress = 100
                 self.message = f"Inventory sync done: {result.get('updated',0)} updated, {len(result.get('failed',[]))} failed"
