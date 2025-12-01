@@ -1237,6 +1237,9 @@ function updateSyncStatus(status) {
     if (progressPercent) progressPercent.textContent = status.progress + '%';
     if (progressText) progressText.textContent = status.message || 'Processing...';
     
+    // NEW ARCHITECTURE: Update step indicators based on message
+    updateStepIndicators(status.message || '');
+    
     // Update stats
     if (status.stats) {
         updateElement('statTotal', status.stats.total || 0);
@@ -1253,12 +1256,68 @@ function updateSyncStatus(status) {
     if (status.status === 'completed' || status.status === 'error') {
         if (document.getElementById('startBtn')) document.getElementById('startBtn').disabled = false;
         if (document.getElementById('stopBtn')) document.getElementById('stopBtn').disabled = true;
+        // Reset all steps when completed
+        if (status.status === 'completed') {
+            resetStepIndicators();
+        }
     }
     
     // Display errors
     if (status.errors && status.errors.length > 0) {
         displayErrors(status.errors);
     }
+}
+
+// NEW ARCHITECTURE: Update step indicators
+function updateStepIndicators(message) {
+    const steps = {
+        'fetch': document.getElementById('step-fetch'),
+        'cache': document.getElementById('step-cache'),
+        'group': document.getElementById('step-group'),
+        'sync': document.getElementById('step-sync')
+    };
+    
+    // Reset all steps
+    Object.values(steps).forEach(step => {
+        if (step) {
+            step.classList.remove('active', 'completed');
+        }
+    });
+    
+    // Determine current step from message
+    const msg = message.toLowerCase();
+    
+    if (msg.includes('fetching') || msg.includes('çekiliyor') || msg.includes('fetch')) {
+        if (steps.fetch) steps.fetch.classList.add('active');
+    } else if (msg.includes('cached') || msg.includes('kaydediliyor') || msg.includes('database') || msg.includes('veritabanı')) {
+        if (steps.fetch) steps.fetch.classList.add('completed');
+        if (steps.cache) steps.cache.classList.add('active');
+    } else if (msg.includes('grouping') || msg.includes('gruplanıyor') || msg.includes('group')) {
+        if (steps.fetch) steps.fetch.classList.add('completed');
+        if (steps.cache) steps.cache.classList.add('completed');
+        if (steps.group) steps.group.classList.add('active');
+    } else if (msg.includes('syncing') || msg.includes('aktarılıyor') || msg.includes('sync') || msg.includes('processing') || msg.includes('işleniyor')) {
+        if (steps.fetch) steps.fetch.classList.add('completed');
+        if (steps.cache) steps.cache.classList.add('completed');
+        if (steps.group) steps.group.classList.add('completed');
+        if (steps.sync) steps.sync.classList.add('active');
+    } else if (msg.includes('completed') || msg.includes('tamamlandı')) {
+        // All steps completed
+        Object.values(steps).forEach(step => {
+            if (step) step.classList.add('completed');
+        });
+    }
+}
+
+// Reset step indicators
+function resetStepIndicators() {
+    const steps = ['step-fetch', 'step-cache', 'step-group', 'step-sync'];
+    steps.forEach(stepId => {
+        const step = document.getElementById(stepId);
+        if (step) {
+            step.classList.remove('active', 'completed');
+        }
+    });
 }
 
 // Current product polling
