@@ -1028,6 +1028,55 @@ class ShopifyClient:
                             print(f"⚠️ Could not update variant {target_sku}: {e}")
                     
                     print(f"✅ Updated {updated_count}/{len(variants_list)} variants with SKU/weight")
+                    
+                    # Step 4.6: Update inventory for created variants
+                    if location_id:
+                        print(f"📦 Updating inventory for {len(variants_list)} variants...")
+                        inventory_updated = 0
+                        
+                        for created_variant in variants_list:
+                            variant_gid = created_variant.get('gid', '')
+                            selected_opts = created_variant.get('selectedOptions', [])
+                            option_key = tuple((opt['name'], opt['value']) for opt in selected_opts)
+                            
+                            original_data = option_to_variant_map.get(option_key)
+                            if not original_data:
+                                continue
+                            
+                            inventory_qty = original_data.get('inventoryQuantities', [{}])[0].get('availableQuantity') if original_data.get('inventoryQuantities') else None
+                            
+                            if inventory_qty is not None:
+                                try:
+                                    # Get variant's inventory item ID
+                                    variant_query = """
+                                    query getVariant($id: ID!) {
+                                        productVariant(id: $id) {
+                                            inventoryItem {
+                                                id
+                                            }
+                                        }
+                                    }
+                                    """
+                                    inv_response = requests.post(
+                                        self.graphql_url,
+                                        headers=self.headers,
+                                        json={'query': variant_query, 'variables': {'id': variant_gid}},
+                                        timeout=30
+                                    )
+                                    inv_response.raise_for_status()
+                                    inv_result = inv_response.json()
+                                    inventory_item_id = inv_result.get('data', {}).get('productVariant', {}).get('inventoryItem', {}).get('id')
+                                    
+                                    if inventory_item_id:
+                                        # Set inventory quantity
+                                        self.set_inventory_quantity(inventory_item_id, location_id, int(inventory_qty))
+                                        inventory_updated += 1
+                                    
+                                    time.sleep(0.1)
+                                except Exception as e:
+                                    print(f"⚠️ Could not update inventory for variant: {e}")
+                        
+                        print(f"✅ Updated inventory for {inventory_updated}/{len(variants_list)} variants")
                 
                 # Log warning if no variants created, but DON'T fail
                 if created_count == 0:
