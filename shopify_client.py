@@ -1056,8 +1056,9 @@ class ShopifyClient:
                             print(f"DEBUG: Creating variant {idx+1}/{len(unique_variants)} - SKU: {variant_sku}")
                             print(f"DEBUG: Variant payload: {variant_payload}")
                         
-                        # CRITICAL FIX: Use correct GraphQL mutation structure with input wrapper
-                        variant_input = {
+                        # CRITICAL FIX: ProductVariantInput requires productId to be INSIDE the input object
+                        # According to Shopify GraphQL API 2025-10 docs
+                        variant_input_payload = {
                             'productId': product_gid,
                             **variant_payload
                         }
@@ -1068,7 +1069,7 @@ class ShopifyClient:
                             json={
                                 'query': variant_mutation,
                                 'variables': {
-                                    'input': variant_input
+                                    'input': variant_input_payload
                                 }
                             },
                             timeout=30
