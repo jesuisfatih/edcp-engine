@@ -884,6 +884,20 @@ class SyncManager:
             if variant_image:
                 variant['image'] = variant_image
             
+            # Add variant-specific metafields
+            variant_metafields = {}
+            variant_metafield_fields = [
+                'colorName', 'colorCode', 'colorPriceCodeName', 'colorGroup', 'colorGroupName',
+                'colorFamilyID', 'colorFamily', 'sizeName', 'sizeCode', 'sizeOrder', 
+                'sizePriceCodeName', 'qty', 'gtin', 'yourSku'
+            ]
+            for field in variant_metafield_fields:
+                if ss_product.get(field) is not None:
+                    variant_metafields[field] = ss_product[field]
+            
+            if variant_metafields:
+                variant['metafields'] = variant_metafields
+            
             # Set inventory management
             inventory_management = self.sync_options.get('inventory_management', 'shopify')
             if inventory_management == 'not_managed':

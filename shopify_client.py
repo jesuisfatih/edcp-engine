@@ -568,16 +568,22 @@ class ShopifyClient:
                     variant_input['inventoryPolicy'] = 'DENY'
                 
                 variant_input['_image'] = variant_data.get('image')
+                variant_input['_metafields'] = variant_data.get('metafields', {})
                 unique_variants.append(variant_input)
             
             if unique_variants:
                 variants_list = []
                 variant_images_map = {}
+                variant_metafields_map = {}
                 
                 for v in unique_variants:
                     image_url = v.pop('_image', None)
-                    if image_url:
-                        variant_images_map[v.get('sku', '')] = image_url
+                    metafields = v.pop('_metafields', {})
+                    variant_sku = v.get('sku', '')
+                    if image_url and variant_sku:
+                        variant_images_map[variant_sku] = image_url
+                    if metafields and variant_sku:
+                        variant_metafields_map[variant_sku] = metafields
                 
                 variant_mutation = """
                 mutation productVariantCreate($productId: ID!, $variant: ProductVariantInput!) {
@@ -664,9 +670,11 @@ class ShopifyClient:
                         if variant_node:
                             variant_id_str = variant_node.get('id', '').replace('gid://shopify/ProductVariant/', '')
                             variant_id = int(variant_id_str) if variant_id_str.isdigit() else None
-                            variant_sku_created = variant_node.get('sku', '')
+                            variant_sku_created = variant_node.get('sku', '') or variant_sku
+                            variant_gid_created = variant_node.get('id', '')
                             variants_list.append({
                                 'id': variant_id,
+                                'gid': variant_gid_created,
                                 'sku': variant_sku_created,
                                 'price': variant_node.get('price', '0')
                             })
@@ -749,12 +757,19 @@ class ShopifyClient:
                     
                     matching_variant = None
                     for v in variants_list:
-                        if v.get('sku', '').strip() == variant_sku.strip():
-                            matching_variant = v
-                            break
+                        # Try to match by SKU (exact match or case-insensitive)
+                        v_sku = v.get('sku', '').strip()
+                        if v_sku and variant_sku.strip():
+                            if v_sku == variant_sku.strip() or v_sku.lower() == variant_sku.strip().lower():
+                                matching_variant = v
+                                break
                     
-                    if matching_variant and matching_variant.get('id'):
-                        variant_gid = f"gid://shopify/ProductVariant/{matching_variant['id']}"
+                    if matching_variant:
+                        # Use GID if available, otherwise construct from ID
+                        variant_gid = matching_variant.get('gid') or f"gid://shopify/ProductVariant/{matching_variant.get('id')}"
+                        if not variant_gid or 'None' in variant_gid:
+                            print(f"Warning: Invalid variant GID for SKU {variant_sku}, skipping image")
+                            continue
                         image_mutation = """
                         mutation productImageCreate($productId: ID!, $image: ImageInput!) {
                             productImageCreate(productId: $productId, image: $image) {
@@ -806,10 +821,35 @@ class ShopifyClient:
             else:
                 print("Warning: No variant images provided in variant_images_map")
             
-            # Step 7: Add metafields
+            # Step 7: Add product-level metafields
             if product_data.get('metafields'):
-                print(f"Adding {len(product_data['metafields'])} metafields...")
+                print(f"Adding {len(product_data['metafields'])} product-level metafields...")
                 self._add_product_metafields(product_gid, product_data['metafields'])
+            
+            # Step 7b: Add variant-level metafields
+            if variant_metafields_map:
+                print(f"Adding variant metafields for {len(variant_metafields_map)} variants...")
+                for variant_sku, metafields in variant_metafields_map.items():
+                    if not metafields:
+                        continue
+                    
+                    matching_variant = None
+                    for v in variants_list:
+                        v_sku = v.get('sku', '').strip()
+                        if v_sku and variant_sku.strip():
+                            if v_sku == variant_sku.strip() or v_sku.lower() == variant_sku.strip().lower():
+                                matching_variant = v
+                                break
+                    
+                    if matching_variant:
+                        variant_gid = matching_variant.get('gid') or f"gid://shopify/ProductVariant/{matching_variant.get('id')}"
+                        if variant_gid and 'None' not in variant_gid:
+                            print(f"Adding {len(metafields)} metafields for variant SKU: {variant_sku}")
+                            self._add_variant_metafields(variant_gid, metafields)
+                        else:
+                            print(f"Warning: Invalid variant GID for SKU {variant_sku}, skipping metafields")
+                    else:
+                        print(f"Warning: Could not find variant with SKU {variant_sku} for metafields")
             
             # Step 8: Add to collections
             if product_data.get('collections'):
