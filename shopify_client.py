@@ -694,15 +694,17 @@ class ShopifyClient:
             else:
                 tags = []
 
+            # CRITICAL FIX: Do NOT define productOptions in productCreate
+            # Shopify will auto-detect options from variants' selectedOptions
+            # If we define productOptions here, Shopify creates a default variant that requires option values
             product_input = {
                 'title': product_data.get('title', 'Product'),
                 'descriptionHtml': product_data.get('description', '') or '',
                 'vendor': product_data.get('vendor', '') or '',
                 'productType': product_data.get('product_type', '') or '',
                 'tags': tags,
-                'status': product_data.get('status', 'ACTIVE').upper(),
-                # CRITICAL FIX: ProductInput uses 'productOptions' (not 'options') with format [{'name': 'Color'}, {'name': 'Size'}]
-                'productOptions': [{'name': name} for name in (option_names if option_names else ['Title'])]
+                'status': product_data.get('status', 'ACTIVE').upper()
+                # DO NOT include productOptions here - Shopify will auto-detect from variants
             }
             
             response = requests.post(
