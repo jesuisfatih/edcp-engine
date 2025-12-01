@@ -1614,7 +1614,30 @@ class ShopifyClient:
             else:
                 tags_str = tags
             
-            # Product payload (NO variants)
+            # Extract unique option values from variants to define product options
+            variants_data = product_data.get('variants', [])
+            option1_values = set()
+            option2_values = set()
+            option3_values = set()
+            
+            for v in variants_data:
+                if v.get('option1'):
+                    option1_values.add(str(v['option1']))
+                if v.get('option2'):
+                    option2_values.add(str(v['option2']))
+                if v.get('option3'):
+                    option3_values.add(str(v['option3']))
+            
+            # Build options array for REST API
+            options = []
+            if option1_values:
+                options.append({'name': 'Color', 'values': sorted(list(option1_values))})
+            if option2_values:
+                options.append({'name': 'Size', 'values': sorted(list(option2_values))})
+            if option3_values:
+                options.append({'name': 'Style', 'values': sorted(list(option3_values))})
+            
+            # Product payload WITH options
             payload = {
                 'product': {
                     'title': product_data.get('title', 'Product'),
@@ -1625,6 +1648,11 @@ class ShopifyClient:
                     'status': product_data.get('status', 'active').lower()
                 }
             }
+            
+            # Add options if we have any
+            if options:
+                payload['product']['options'] = options
+                print(f"   Product options: {[o['name'] for o in options]}")
             
             url = f"{self.base_url}/products.json"
             response = requests.post(url, headers=self.headers, json=payload, timeout=30)
