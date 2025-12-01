@@ -2246,15 +2246,6 @@ class ShopifyClient:
                 cursor = page_info.get('endCursor')
                 if not cursor:
                     break
-                    if link_header and 'rel="next"' in link_header:
-                        import re
-                        match = re.search(r'page_info=([^>]+)', link_header)
-                        if match:
-                            params = {'limit': 250, 'page_info': match.group(1)}
-                        else:
-                            break
-                    else:
-                        break
             
             # Delete all products
             for product_id in all_products:
