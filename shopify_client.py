@@ -902,8 +902,8 @@ class ShopifyClient:
                             print(f"Warning: Invalid variant GID for SKU {variant_sku}, skipping image")
                             continue
                         image_mutation = """
-                        mutation productImageCreate($productId: ID!, $image: ImageInput!) {
-                            productImageCreate(productId: $productId, image: $image) {
+                        mutation productImageCreate($input: ImageInput!) {
+                            productImageCreate(input: $input) {
                                 image {
                                     id
                                     src
@@ -916,7 +916,9 @@ class ShopifyClient:
                         }
                         """
                         
+                        # CRITICAL FIX: Use correct GraphQL mutation structure with input wrapper
                         image_input = {
+                            'productId': product_gid,
                             'src': image_url.strip(),
                             'variantIds': [variant_gid]
                         }
@@ -928,8 +930,7 @@ class ShopifyClient:
                                 json={
                                     'query': image_mutation,
                                     'variables': {
-                                        'productId': product_gid,
-                                        'image': image_input
+                                        'input': image_input
                                     }
                                 },
                                 timeout=30
