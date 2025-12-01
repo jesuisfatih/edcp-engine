@@ -623,18 +623,21 @@ class ShopifyClient:
                 if option3:
                     option_map.setdefault('Style', set()).add(option3)
             
-            # Build product options array: [{'name': 'Color', 'values': ['Red', 'Blue']}, ...]
+            # Build product options array: [{'name': 'Color', 'values': [{'name': 'Red'}, {'name': 'Blue'}]}, ...]
+            # CRITICAL: values must be array of objects, not array of strings
             product_options = []
             for option_name, values_set in option_map.items():
                 if values_set:
+                    # Convert string values to objects: ['Red', 'Blue'] -> [{'name': 'Red'}, {'name': 'Blue'}]
+                    values_objects = [{'name': value} for value in sorted(list(values_set))]
                     product_options.append({
                         'name': option_name,
-                        'values': sorted(list(values_set))  # Sort for consistency
+                        'values': values_objects
                     })
             
             # If no options found, create a default "Title" option
             if not product_options and variants:
-                product_options = [{'name': 'Title', 'values': ['Default']}]
+                product_options = [{'name': 'Title', 'values': [{'name': 'Default'}]}]
             
             print(f"📋 Product options to create: {[opt['name'] for opt in product_options]}")
 
