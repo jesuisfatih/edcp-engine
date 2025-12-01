@@ -27,6 +27,60 @@ class ShopifyClient:
             "Content-Type": "application/json"
         }
         self._primary_location_id = None
+
+    def _build_metafields_inputs(
+        self,
+        owner_gid: str,
+        metafields: Dict,
+        namespace: str = "ssactivewear",
+        max_value_length: int = 50000
+    ) -> List[Dict]:
+        """Normalize metafields dict to Shopify MetafieldsSetInput list"""
+        if not metafields:
+            return []
+
+        inputs: List[Dict] = []
+
+        for key, value in metafields.items():
+            if value is None or value == "":
+                continue
+
+            norm_key = str(key).strip().lower().replace(" ", "_")
+
+            # Type & value resolution
+            if isinstance(value, bool):
+                value_type = "boolean"
+                value_str = "true" if value else "false"
+            elif isinstance(value, int):
+                value_type = "number_integer"
+                value_str = str(value)
+            elif isinstance(value, float):
+                value_type = "number_decimal"
+                value_str = str(value)
+            elif isinstance(value, (dict, list)):
+                value_type = "json"
+                try:
+                    value_str = json.dumps(value, ensure_ascii=False)
+                except TypeError:
+                    value_str = json.dumps(str(value), ensure_ascii=False)
+            else:
+                value_type = "single_line_text_field"
+                value_str = str(value)
+
+            # Length guard
+            if max_value_length and len(value_str) > max_value_length:
+                value_str = value_str[:max_value_length]
+                print(f"[metafield] Truncated {norm_key} to {len(value_str)} chars")
+
+            inputs.append({
+                "ownerId": owner_gid,
+                "namespace": namespace,
+                "key": norm_key,
+                "type": value_type,
+                "value": value_str
+            })
+
+        return inputs
         
         # Try to initialize Shopify Python library
         self.use_library = False
@@ -647,8 +701,8 @@ class ShopifyClient:
                 'productType': product_data.get('product_type', '') or '',
                 'tags': tags,
                 'status': product_data.get('status', 'ACTIVE').upper(),
-                # ProductInput accepts list of option names
-                'options': option_names if option_names else ['Title']
+                # CRITICAL FIX: ProductInput uses 'productOptions' (not 'options') with format [{'name': 'Color'}, {'name': 'Size'}]
+                'productOptions': [{'name': name} for name in (option_names if option_names else ['Title'])]
             }
             
             response = requests.post(
@@ -1005,21 +1059,28 @@ class ShopifyClient:
             else:
                 raise Exception("CRITICAL: No variants to create. Product cannot exist without variants.")
             
-            # Step 5: Add product images
+            # Step 5: Add product images using fileCreate (productImageCreate is deprecated)
             product_images = product_data.get('images', [])
             if product_images and len(product_images) > 0:
-                print(f"📸 Adding {len(product_images)} product-level images...")
+                print(f"📸 Adding {len(product_images)} product-level images using fileCreate...")
                 image_count = 0
+                created_media_ids = []  # Store media IDs for potential variant association
+                
                 for idx, img_url in enumerate(product_images):
                     if not img_url or not img_url.strip():
                         continue
                     
-                    image_mutation = """
-                    mutation productImageCreate($input: ImageInput!) {
-                        productImageCreate(input: $input) {
-                            image {
+                    # CRITICAL FIX: Use fileCreate instead of deprecated productImageCreate
+                    file_create_mutation = """
+                    mutation fileCreate($files: [FileCreateInput!]!) {
+                        fileCreate(files: $files) {
+                            files {
                                 id
-                                src
+                                ... on MediaImage {
+                                    image {
+                                        url
+                                    }
+                                }
                             }
                             userErrors {
                                 field
@@ -1029,82 +1090,153 @@ class ShopifyClient:
                     }
                     """
                     
-                    # CRITICAL FIX: Use correct GraphQL mutation structure with input wrapper
-                    image_input = {
-                        'productId': product_gid,
-                        'src': img_url.strip()
+                    # fileCreate requires files array with originalSource
+                    file_input = {
+                        'files': [{
+                            'originalSource': img_url.strip(),
+                            'alt': f"Product image {idx+1}",
+                            'contentType': 'IMAGE'
+                        }]
                     }
                     
                     try:
-                        image_response = requests.post(
+                        file_response = requests.post(
                             self.graphql_url,
                             headers=self.headers,
                             json={
-                                'query': image_mutation,
-                                'variables': {
-                                    'input': image_input
-                                }
+                                'query': file_create_mutation,
+                                'variables': file_input
                             },
                             timeout=30
                         )
-                        image_response.raise_for_status()
-                        result = image_response.json()
+                        file_response.raise_for_status()
+                        result = file_response.json()
+                        
                         if 'errors' in result:
                             print(f"Warning: GraphQL error adding product image {idx+1}: {result['errors']}")
                         else:
-                            user_errors = result.get('data', {}).get('productImageCreate', {}).get('userErrors', [])
+                            file_create_data = result.get('data', {}).get('fileCreate', {})
+                            user_errors = file_create_data.get('userErrors', [])
+                            
                             if user_errors:
                                 print(f"Warning: User errors adding product image {idx+1}: {user_errors}")
                             else:
-                                image_count += 1
-                                print(f"Successfully added product image {image_count}/{len(product_images)}")
-                        time.sleep(0.15)
+                                files = file_create_data.get('files', [])
+                                if files:
+                                    media_id = files[0].get('id')
+                                    if media_id:
+                                        created_media_ids.append(media_id)
+                                        image_count += 1
+                                        print(f"✅ Successfully added product image {image_count}/{len(product_images)} (Media ID: {media_id})")
+                                        
+                                        # Associate media with product using mediaCreate (correct method per Shopify docs)
+                                        try:
+                                            media_create_mutation = """
+                                            mutation mediaCreate($productId: ID!, $media: [CreateMediaInput!]!) {
+                                                mediaCreate(productId: $productId, media: $media) {
+                                                    media {
+                                                        id
+                                                        ... on MediaImage {
+                                                            image {
+                                                                url
+                                                            }
+                                                        }
+                                                    }
+                                                    mediaUserErrors {
+                                                        field
+                                                        message
+                                                    }
+                                                }
+                                            }
+                                            """
+                                            
+                                            media_response = requests.post(
+                                                self.graphql_url,
+                                                headers=self.headers,
+                                                json={
+                                                    'query': media_create_mutation,
+                                                    'variables': {
+                                                        'productId': product_gid,
+                                                        'media': [{'mediaId': media_id}]
+                                                    }
+                                                },
+                                                timeout=30
+                                            )
+                                            media_response.raise_for_status()
+                                            media_result = media_response.json()
+                                            
+                                            if 'errors' in media_result:
+                                                print(f"Warning: Error associating media {media_id} with product: {media_result['errors']}")
+                                            else:
+                                                media_errors = media_result.get('data', {}).get('mediaCreate', {}).get('mediaUserErrors', [])
+                                                if media_errors:
+                                                    print(f"Warning: User errors associating media: {media_errors}")
+                                                else:
+                                                    print(f"   Media {media_id} associated with product")
+                                        except Exception as media_e:
+                                            print(f"Warning: Could not associate media {media_id} with product: {media_e}")
+                                else:
+                                    print(f"Warning: fileCreate succeeded but no files returned for image {idx+1}")
+                        time.sleep(0.2)
                     except Exception as e:
                         print(f"Warning: Could not add product image {idx+1} ({img_url[:50]}...): {e}")
-                print(f"Product images complete: {image_count}/{len(product_images)} images added")
+                        import traceback
+                        print(f"   Traceback: {traceback.format_exc()[:200]}")
+                
+                print(f"📸 Product images complete: {image_count}/{len(product_images)} images added and associated")
             else:
                 print("Warning: No product images provided in product_data")
             
-            # Step 6: Add variant-specific images
+            # Step 6: Add variant-specific images using productVariantAppendMedia (correct method)
             if variant_images_map and len(variant_images_map) > 0:
-                print(f"📸 Adding variant-specific images for {len(variant_images_map)} variants...")
+                print(f"📸 Adding variant-specific images for {len(variant_images_map)} variants using productVariantAppendMedia...")
                 print(f"   Variant images map: {list(variant_images_map.keys())[:5]}...")  # Show first 5 SKUs
                 variant_image_count = 0
+                
+                # Step 6a: First, create all media files using fileCreate
+                variant_media_map = {}  # Map variant_sku -> media_id
+                
                 for variant_sku, image_url in variant_images_map.items():
                     if not image_url or not image_url.strip():
                         continue
                     
                     matching_variant = None
                     for v in variants_list:
-                        # Try to match by SKU (exact match or case-insensitive)
                         v_sku = v.get('sku', '').strip()
                         if v_sku and variant_sku.strip():
                             if v_sku == variant_sku.strip() or v_sku.lower() == variant_sku.strip().lower():
                                 matching_variant = v
                                 break
                     
-                    if matching_variant:
-                        # Use GID if available, otherwise construct from ID
-                        variant_gid = matching_variant.get('gid')
-                        if not variant_gid:
-                            variant_id = matching_variant.get('id')
-                            if variant_id:
-                                variant_gid = f"gid://shopify/ProductVariant/{variant_id}"
-                            else:
-                                print(f"⚠️ Warning: No GID or ID for variant SKU {variant_sku}, skipping image")
-                                continue
-                        
-                        if 'None' in str(variant_gid):
-                            print(f"⚠️ Warning: Invalid variant GID for SKU {variant_sku}, skipping image")
+                    if not matching_variant:
+                        print(f"⚠️ Warning: Could not find variant with SKU {variant_sku} for image mapping")
+                        continue
+                    
+                    variant_gid = matching_variant.get('gid')
+                    if not variant_gid:
+                        variant_id = matching_variant.get('id')
+                        if variant_id:
+                            variant_gid = f"gid://shopify/ProductVariant/{variant_id}"
+                        else:
+                            print(f"⚠️ Warning: No GID or ID for variant SKU {variant_sku}, skipping image")
                             continue
-                        
-                        print(f"   Adding image for variant SKU {variant_sku} (GID: {variant_gid})")
-                        image_mutation = """
-                        mutation productImageCreate($input: ImageInput!) {
-                            productImageCreate(input: $input) {
-                                image {
+                    
+                    if 'None' in str(variant_gid):
+                        print(f"⚠️ Warning: Invalid variant GID for SKU {variant_sku}, skipping image")
+                        continue
+                    
+                    # Create media file first
+                    try:
+                        file_create_mutation = """
+                        mutation fileCreate($files: [FileCreateInput!]!) {
+                            fileCreate(files: $files) {
+                                files {
                                     id
-                                    src
+                                    ... on MediaImage {
+                                        image {
+                                            url
+                                        }
+                                    }
                                 }
                                 userErrors {
                                     field
@@ -1114,45 +1246,123 @@ class ShopifyClient:
                         }
                         """
                         
-                        # CRITICAL FIX: Use correct GraphQL mutation structure with input wrapper
-                        image_input = {
-                            'productId': product_gid,
-                            'src': image_url.strip(),
-                            'variantIds': [variant_gid]
+                        file_input = {
+                            'files': [{
+                                'originalSource': image_url.strip(),
+                                'alt': f"Variant image for {variant_sku}",
+                                'contentType': 'IMAGE'
+                            }]
                         }
                         
+                        file_response = requests.post(
+                            self.graphql_url,
+                            headers=self.headers,
+                            json={
+                                'query': file_create_mutation,
+                                'variables': file_input
+                            },
+                            timeout=30
+                        )
+                        file_response.raise_for_status()
+                        file_result = file_response.json()
+                        
+                        if 'errors' in file_result:
+                            print(f"Warning: GraphQL error creating media for variant {variant_sku}: {file_result['errors']}")
+                            continue
+                        
+                        file_create_data = file_result.get('data', {}).get('fileCreate', {})
+                        user_errors = file_create_data.get('userErrors', [])
+                        
+                        if user_errors:
+                            print(f"Warning: User errors creating media for variant {variant_sku}: {user_errors}")
+                            continue
+                        
+                        files = file_create_data.get('files', [])
+                        if files and files[0].get('id'):
+                            media_id = files[0].get('id')
+                            variant_media_map[variant_sku] = {
+                                'media_id': media_id,
+                                'variant_gid': variant_gid
+                            }
+                            print(f"   Created media {media_id} for variant SKU {variant_sku}")
+                        else:
+                            print(f"Warning: fileCreate succeeded but no media ID returned for variant {variant_sku}")
+                            continue
+                        
+                        time.sleep(0.15)
+                    except Exception as e:
+                        print(f"❌ Error creating media for variant {variant_sku}: {e}")
+                        continue
+                
+                # Step 6b: Associate media with variants using productVariantAppendMedia
+                if variant_media_map:
+                    print(f"📸 Associating {len(variant_media_map)} media files with variants...")
+                    
+                    # Group by variant for batch processing
+                    variant_media_inputs = []
+                    for variant_sku, media_info in variant_media_map.items():
+                        variant_media_inputs.append({
+                            'variantId': media_info['variant_gid'],
+                            'mediaIds': [media_info['media_id']]
+                        })
+                    
+                    # Use productVariantAppendMedia mutation (correct method per Shopify docs)
+                    variant_append_mutation = """
+                    mutation productVariantAppendMedia($productId: ID!, $variantMedia: [ProductVariantAppendMediaInput!]!) {
+                        productVariantAppendMedia(productId: $productId, variantMedia: $variantMedia) {
+                            product {
+                                id
+                            }
+                            productVariants {
+                                id
+                            }
+                            userErrors {
+                                field
+                                message
+                            }
+                        }
+                    }
+                    """
+                    
+                    # Process in batches of 10 to avoid overwhelming the API
+                    batch_size = 10
+                    for i in range(0, len(variant_media_inputs), batch_size):
+                        batch = variant_media_inputs[i:i+batch_size]
+                        
                         try:
-                            image_response = requests.post(
+                            append_response = requests.post(
                                 self.graphql_url,
                                 headers=self.headers,
                                 json={
-                                    'query': image_mutation,
+                                    'query': variant_append_mutation,
                                     'variables': {
-                                        'input': image_input
+                                        'productId': product_gid,
+                                        'variantMedia': batch
                                     }
                                 },
                                 timeout=30
                             )
-                            image_response.raise_for_status()
-                            result = image_response.json()
-                            if 'errors' in result:
-                                print(f"Warning: GraphQL error adding variant image for {variant_sku}: {result['errors']}")
+                            append_response.raise_for_status()
+                            append_result = append_response.json()
+                            
+                            if 'errors' in append_result:
+                                print(f"Warning: GraphQL error appending media to variants (batch {i//batch_size + 1}): {append_result['errors']}")
                             else:
-                                user_errors = result.get('data', {}).get('productImageCreate', {}).get('userErrors', [])
+                                append_data = append_result.get('data', {}).get('productVariantAppendMedia', {})
+                                user_errors = append_data.get('userErrors', [])
+                                
                                 if user_errors:
-                                    print(f"Warning: User errors adding variant image for {variant_sku}: {user_errors}")
+                                    print(f"Warning: User errors appending media (batch {i//batch_size + 1}): {user_errors}")
                                 else:
-                                    variant_image_count += 1
-                                    if variant_image_count <= 3 or variant_image_count % 10 == 0:
-                                        print(f"✅ Variant image {variant_image_count}/{len(variant_images_map)} added for SKU: {variant_sku}")
-                            time.sleep(0.15)
+                                    variant_image_count += len(batch)
+                                    print(f"✅ Associated {len(batch)} variant images (batch {i//batch_size + 1}, total: {variant_image_count}/{len(variant_media_map)})")
+                            
+                            time.sleep(0.2)
                         except Exception as e:
-                            print(f"❌ Error adding variant image for {variant_sku}: {e}")
+                            print(f"❌ Error appending media to variants (batch {i//batch_size + 1}): {e}")
                             import traceback
                             print(f"   Traceback: {traceback.format_exc()[:200]}")
-                    else:
-                        print(f"⚠️ Warning: Could not find variant with SKU {variant_sku} in created variants list for image mapping")
-                        print(f"   Available variant SKUs: {[v.get('sku') for v in variants_list[:5]]}...")
+                
                 print(f"📸 Variant images complete: {variant_image_count}/{len(variant_images_map)} variant images added")
             else:
                 print(f"⚠️ Warning: No variant images to add (variant_images_map is empty or None)")
@@ -1217,158 +1427,86 @@ class ShopifyClient:
     def _add_product_metafields(self, product_gid: str, metafields: Dict):
         """Add metafields to a product using GraphQL"""
         try:
-            if not metafields:
+            metafields_inputs = self._build_metafields_inputs(product_gid, metafields, namespace="ssactivewear")
+            if not metafields_inputs:
                 return
-            
-            metafields_list = []
-            for key, value in metafields.items():
-                if value is None or value == '':
-                    continue
-                
-                if isinstance(value, bool):
-                    value_type = 'boolean'
-                    value_str = str(value).lower()
-                elif isinstance(value, (int, float)):
-                    value_type = 'number_integer' if isinstance(value, int) else 'number_decimal'
-                    value_str = str(value)
-                else:
-                    value_type = 'single_line_text_field'
-                    value_str = str(value)
-                
-                metafields_list.append({
-                    'namespace': 'ssactivewear',
-                    'key': key.lower().replace(' ', '_'),
-                    'value': value_str,
-                    'type': value_type
-                })
-            
-            if not metafields_list:
-                return
-            
-            for metafield in metafields_list:
-                try:
-                    metafield_mutation_single = """
-                    mutation metafieldsSet($metafields: [MetafieldsSetInput!]!) {
-                        metafieldsSet(metafields: $metafields) {
-                            metafields {
-                                id
-                                namespace
-                                key
-                            }
-                            userErrors {
-                                field
-                                message
-                            }
-                        }
-                    }
-                    """
-                    
-                    metafield_input = {
-                        'ownerId': product_gid,
-                        'namespace': metafield['namespace'],
-                        'key': metafield['key'],
-                        'value': metafield['value'],
-                        'type': metafield['type']
-                    }
-                    
-                    response = requests.post(
-                        self.graphql_url,
-                        headers=self.headers,
-                        json={
-                            'query': metafield_mutation_single,
-                            'variables': {
-                                'metafields': [metafield_input]
-                            }
-                        },
-                        timeout=30
-                    )
-                    response.raise_for_status()
-                    result = response.json()
-                    
-                    if 'errors' in result:
-                        print(f"Warning: Error adding metafield {metafield['key']}: {result['errors']}")
-                    else:
-                        user_errors = result.get('data', {}).get('metafieldsSet', {}).get('userErrors', [])
-                        if user_errors:
-                            print(f"Warning: User errors adding metafield {metafield['key']}: {user_errors}")
-                    
-                    time.sleep(0.1)
-                except Exception as e:
-                    print(f"Warning: Could not add metafield {metafield.get('key', 'unknown')}: {e}")
-            
+
+            metafield_mutation = """
+            mutation metafieldsSet($metafields: [MetafieldsSetInput!]!) {
+                metafieldsSet(metafields: $metafields) {
+                    metafields { id namespace key value type }
+                    userErrors { field message }
+                }
+            }
+            """
+
+            batch_size = 20
+            for i in range(0, len(metafields_inputs), batch_size):
+                batch = metafields_inputs[i:i+batch_size]
+                print(f"[metafields][product] Sending batch of {len(batch)}")
+                response = requests.post(
+                    self.graphql_url,
+                    headers=self.headers,
+                    json={
+                        'query': metafield_mutation,
+                        'variables': { 'metafields': batch }
+                    },
+                    timeout=30
+                )
+                response.raise_for_status()
+                result = response.json()
+
+                if 'errors' in result:
+                    print(f"[metafields][product] GraphQL errors: {result['errors']}")
+                user_errors = result.get('data', {}).get('metafieldsSet', {}).get('userErrors', [])
+                if user_errors:
+                    print(f"[metafields][product] userErrors: {user_errors}")
+
+                time.sleep(0.1)
+
         except Exception as e:
             print(f"Warning: Error adding metafields: {e}")
     
     def _add_variant_metafields(self, variant_gid: str, metafields: Dict):
         """Add metafields to a variant using GraphQL"""
         try:
-            if not metafields:
+            metafields_inputs = self._build_metafields_inputs(variant_gid, metafields, namespace="ssactivewear")
+            if not metafields_inputs:
                 return
-            
-            for key, value in metafields.items():
-                if value is None or value == '':
-                    continue
-                
-                if isinstance(value, bool):
-                    value_type = 'boolean'
-                    value_str = str(value).lower()
-                elif isinstance(value, (int, float)):
-                    value_type = 'number_integer' if isinstance(value, int) else 'number_decimal'
-                    value_str = str(value)
-                else:
-                    value_type = 'single_line_text_field'
-                    value_str = str(value)
-                
-                try:
-                    metafield_mutation = """
-                    mutation metafieldsSet($metafields: [MetafieldsSetInput!]!) {
-                        metafieldsSet(metafields: $metafields) {
-                            metafields {
-                                id
-                                namespace
-                                key
-                            }
-                            userErrors {
-                                field
-                                message
-                            }
-                        }
-                    }
-                    """
-                    
-                    metafield_input = {
-                        'ownerId': variant_gid,
-                        'namespace': 'ssactivewear',
-                        'key': key.lower().replace(' ', '_'),
-                        'value': value_str,
-                        'type': value_type
-                    }
-                    
-                    response = requests.post(
-                        self.graphql_url,
-                        headers=self.headers,
-                        json={
-                            'query': metafield_mutation,
-                            'variables': {
-                                'metafields': [metafield_input]
-                            }
-                        },
-                        timeout=30
-                    )
-                    response.raise_for_status()
-                    result = response.json()
-                    
-                    if 'errors' in result:
-                        print(f"Warning: Error adding variant metafield {key}: {result['errors']}")
-                    else:
-                        user_errors = result.get('data', {}).get('metafieldsSet', {}).get('userErrors', [])
-                        if user_errors:
-                            print(f"Warning: User errors adding variant metafield {key}: {user_errors}")
-                    
-                    time.sleep(0.1)
-                except Exception as e:
-                    print(f"Warning: Could not add variant metafield {key}: {e}")
-            
+
+            metafield_mutation = """
+            mutation metafieldsSet($metafields: [MetafieldsSetInput!]!) {
+                metafieldsSet(metafields: $metafields) {
+                    metafields { id namespace key value type }
+                    userErrors { field message }
+                }
+            }
+            """
+
+            batch_size = 20
+            for i in range(0, len(metafields_inputs), batch_size):
+                batch = metafields_inputs[i:i+batch_size]
+                print(f"[metafields][variant] Sending batch of {len(batch)} for {variant_gid}")
+                response = requests.post(
+                    self.graphql_url,
+                    headers=self.headers,
+                    json={
+                        'query': metafield_mutation,
+                        'variables': { 'metafields': batch }
+                    },
+                    timeout=30
+                )
+                response.raise_for_status()
+                result = response.json()
+
+                if 'errors' in result:
+                    print(f"[metafields][variant] GraphQL errors: {result['errors']}")
+                user_errors = result.get('data', {}).get('metafieldsSet', {}).get('userErrors', [])
+                if user_errors:
+                    print(f"[metafields][variant] userErrors: {user_errors}")
+
+                time.sleep(0.1)
+
         except Exception as e:
             print(f"Warning: Error adding variant metafields: {e}")
     
