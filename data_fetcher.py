@@ -36,6 +36,7 @@ class DataFetcher:
         style_lookup = {}
         category_lookup = {}
         brand_lookup = {}
+        specs_lookup = {}
         if style_ids:
             try:
                 styleid_param = ",".join([str(sid) for sid in style_ids])
@@ -67,6 +68,20 @@ class DataFetcher:
             print(f"[fetch] Brand lookup loaded: {len(brand_lookup)}")
         except Exception as e:
             print(f"[fetch] Warning: could not fetch brands: {e}")
+        # Specs lookup
+        if style_ids:
+            try:
+                spec_styles = ",".join([str(sid) for sid in style_ids])
+                specs = self.ss_client.get_specs(style=spec_styles)
+                for s in specs or []:
+                    sid = s.get("styleID")
+                    if sid is None:
+                        continue
+                    specs_lookup.setdefault(int(sid), []).append(s)
+                if specs_lookup:
+                    print(f"[fetch] Specs fetched for {len(specs_lookup)} styles")
+            except Exception as e:
+                print(f"[fetch] Warning: could not fetch specs: {e}")
 
         def normalize_image(path: Optional[str]) -> Optional[str]:
             """Build full URL and prefer large size; return None if empty."""
@@ -137,6 +152,11 @@ class DataFetcher:
                         bid = enriched.get("brandID") or enriched.get("brandId") or enriched.get("brandid")
                         if bid and brand_lookup.get(str(bid)):
                             enriched["brandName"] = brand_lookup[str(bid)]
+
+                    # Attach specs per style
+                    style_specs = specs_lookup.get(int(enriched.get("styleID"))) if enriched.get("styleID") is not None else None
+                    if style_specs:
+                        enriched["styleSpecs"] = style_specs
 
                     # Store full product data as JSON
                     product_json = json.dumps(enriched)

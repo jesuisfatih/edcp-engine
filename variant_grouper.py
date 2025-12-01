@@ -186,6 +186,20 @@ class VariantGrouper:
                         for field in variant_metafield_fields:
                             if product.get(field) is not None:
                                 variant_metafields[field] = product[field]
+                        # Attach specs matching sizeName if available
+                        if product.get('styleSpecs'):
+                            try:
+                                specs_for_size = []
+                                for spec in product['styleSpecs']:
+                                    if not isinstance(spec, dict):
+                                        continue
+                                    if size_name and str(spec.get('sizeName', '')).strip().lower() != size_name.lower():
+                                        continue
+                                    specs_for_size.append(spec)
+                                if specs_for_size:
+                                    variant_metafields['specs'] = specs_for_size
+                            except Exception:
+                                pass
                         
                         cursor.execute('''
                             INSERT OR REPLACE INTO product_variants

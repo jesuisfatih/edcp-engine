@@ -686,6 +686,19 @@ class SyncManager:
                         collections.append(coll['id'])
                 except Exception:
                     pass
+            # Add category name collections if available in metafields
+            if isinstance(group.get('product_metafields'), dict):
+                cat_names = group['product_metafields'].get('categoryNames') or group['product_metafields'].get('categorynames')
+                if cat_names and create_if_not_exists:
+                    for cname in cat_names:
+                        try:
+                            coll = self.shopify_client.find_or_create_collection(
+                                cname,
+                                handle=cname.lower().replace(' ', '-').replace('&', 'and')
+                            )
+                            collections.append(coll['id'])
+                        except Exception:
+                            pass
         
         # CRITICAL VALIDATION: Must have at least 1 variant
         if not variant_list or len(variant_list) == 0:
@@ -738,6 +751,13 @@ class SyncManager:
             if self.sync_options.get('update_existing', True):
                 self.shopify_client.update_product(existing_product['id'], product_data)
                 self.stats['updated'] += 1
+                # Post-update validation
+                try:
+                    refreshed = self.shopify_client.get_product_by_title(product_title)
+                    if refreshed:
+                        print(f"[validate] Updated product {product_title}: variants={len(refreshed.get('variants', []))}, images={len(refreshed.get('images', [])) if isinstance(refreshed.get('images'), list) else 'n/a'}")
+                except Exception as e:
+                    print(f"[validate] Warning fetching updated product {product_title}: {e}")
                 
                 # Save to database for rollback
                 shopify_variants = existing_product.get('variants', [])
@@ -840,6 +860,12 @@ class SyncManager:
             if self.sync_options.get('update_existing', True):
                 self.shopify_client.update_product(existing_product['id'], product_data)
                 self.stats['updated'] += 1
+                try:
+                    refreshed = self.shopify_client.get_product_by_title(product_title)
+                    if refreshed:
+                        print(f"[validate] Updated product {product_title}: variants={len(refreshed.get('variants', []))}, images={len(refreshed.get('images', [])) if isinstance(refreshed.get('images'), list) else 'n/a'}")
+                except Exception as e:
+                    print(f"[validate] Warning fetching updated product {product_title}: {e}")
                 # Save to database for rollback
                 variants = existing_product.get('variants', [])
                 if variants:
@@ -874,6 +900,12 @@ class SyncManager:
                     else:
                         # New product created
                         self.stats['created'] += 1
+                        try:
+                            refreshed = self.shopify_client.get_product_by_title(product_title)
+                            if refreshed:
+                                print(f"[validate] Created product {product_title}: variants={len(refreshed.get('variants', []))}, images={len(refreshed.get('images', [])) if isinstance(refreshed.get('images'), list) else 'n/a'}")
+                        except Exception as e:
+                            print(f"[validate] Warning fetching created product {product_title}: {e}")
                 
                         # Save to database for rollback
                         # Handle both dict and list formats for variants
