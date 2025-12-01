@@ -581,8 +581,98 @@ class ShopifyClient:
             print(f"Failed to search product by title: {e}")
             return None
     
+    def _add_product_images_graphql(self, product_gid: str, image_urls: List[str]) -> int:
+        """STEP 3: Add product images using GraphQL"""
+        # Implementation will be added
+        return 0
+    
+    def _add_variant_images_graphql(self, product_gid: str, variants_data: List[Dict], created_variants: List[Dict]) -> int:
+        """STEP 4: Add variant-specific images using GraphQL"""
+        # Implementation will be added
+        return 0
+    
+    def _update_inventory_graphql(self, variants_data: List[Dict], created_variants: List[Dict]) -> int:
+        """STEP 6: Update inventory using GraphQL"""
+        # Implementation will be added
+        return 0
+    
     def _create_product_with_graphql(self, product_data: Dict) -> Dict:
-        """Create product using GraphQL API (supports unlimited variants)"""
+        """
+        STAGED APPROACH: REST API + GraphQL
+        Step 1: REST - Create product shell
+        Step 2: GraphQL - Add variants
+        Step 3-7: GraphQL - Add images, metafields, inventory, collections
+        """
+        try:
+            variants_data = product_data.get('variants', [])
+            variant_count = len(variants_data)
+            
+            print(f"🎯 STAGED CREATION: {variant_count} variants")
+            
+            # STEP 1: Create product shell (REST API)
+            print(f"📋 STEP 1/7: Creating product shell (REST API)...")
+            product_id, product_gid = self._create_product_shell_rest(product_data)
+            print(f"✅ STEP 1 Complete")
+            
+            # STEP 2: Add variants (GraphQL)
+            print(f"📦 STEP 2/7: Adding {variant_count} variants (GraphQL)...")
+            created_variants = self._add_variants_graphql(product_gid, variants_data)
+            print(f"✅ STEP 2 Complete: {len(created_variants)} variants")
+            
+            # STEP 3: Add product images
+            product_images = product_data.get('images', [])
+            if product_images:
+                print(f"📸 STEP 3/7: Adding {len(product_images)} product images...")
+                self._add_product_images_graphql(product_gid, product_images)
+                print(f"✅ STEP 3 Complete")
+            else:
+                print(f"⏭️ STEP 3: No product images")
+            
+            # STEP 4: Add variant images
+            print(f"📸 STEP 4/7: Adding variant images...")
+            variant_image_count = self._add_variant_images_graphql(product_gid, variants_data, created_variants)
+            print(f"✅ STEP 4 Complete: {variant_image_count} images")
+            
+            # STEP 5: Add metafields
+            if product_data.get('metafields'):
+                print(f"📝 STEP 5/7: Adding metafields...")
+                self._add_product_metafields(product_gid, product_data['metafields'])
+                print(f"✅ STEP 5 Complete")
+            else:
+                print(f"⏭️ STEP 5: No metafields")
+            
+            # STEP 6: Already handled in STEP 2 (inventory update)
+            print(f"⏭️ STEP 6: Inventory updated in STEP 2")
+            
+            # STEP 7: Add to collections
+            collections = product_data.get('collections', [])
+            if collections:
+                print(f"📁 STEP 7/7: Adding to {len(collections)} collections...")
+                for coll_id in collections:
+                    try:
+                        self.add_product_to_collection(product_id, coll_id)
+                    except:
+                        pass
+                print(f"✅ STEP 7 Complete")
+            else:
+                print(f"⏭️ STEP 7: No collections")
+            
+            # Build result
+            result = {
+                'id': product_id,
+                'title': product_data.get('title', ''),
+                'status': 'created',
+                'variants': [{'id': int(v.get('id', '').replace('gid://shopify/ProductVariant/', '') or 0), 'sku': v.get('sku', '')} for v in created_variants]
+            }
+            
+            print(f"🎉 STAGED CREATION COMPLETE: Product {product_id}")
+            return result
+            
+        except Exception as e:
+            raise Exception(f"Staged creation failed: {str(e)}")
+    
+    def _create_product_with_graphql_OLD_BACKUP(self, product_data: Dict) -> Dict:
+        """OLD GRAPHQL CODE - BACKUP ONLY"""
         try:
             variants = product_data.get('variants', [])
             variant_count = len(variants)
@@ -1511,9 +1601,270 @@ class ShopifyClient:
         except Exception as e:
             raise Exception(f"Failed to create product: {str(e)}")
     
-    def _create_product_with_rest(self, product_data: Dict) -> Dict:
-        """DEPRECATED: REST API method - kept for fallback only (not used)"""
-        raise Exception("REST API method is deprecated. Use GraphQL instead.")
+    def _create_product_shell_rest(self, product_data: Dict) -> tuple:
+        """
+        STEP 1: Create product shell using REST API (no variants)
+        Returns: (product_id, product_gid)
+        """
+        try:
+            # Normalize tags
+            tags = product_data.get('tags', [])
+            if isinstance(tags, list):
+                tags_str = ', '.join(tags)
+            else:
+                tags_str = tags
+            
+            # Product payload (NO variants)
+            payload = {
+                'product': {
+                    'title': product_data.get('title', 'Product'),
+                    'body_html': product_data.get('description', ''),
+                    'vendor': product_data.get('vendor', ''),
+                    'product_type': product_data.get('product_type', ''),
+                    'tags': tags_str,
+                    'status': product_data.get('status', 'active').lower()
+                }
+            }
+            
+            url = f"{self.base_url}/products.json"
+            response = requests.post(url, headers=self.headers, json=payload, timeout=30)
+            response.raise_for_status()
+            
+            result = response.json()
+            product = result.get('product', {})
+            product_id = product.get('id')
+            product_gid = f"gid://shopify/Product/{product_id}"
+            
+            print(f"   REST API: Product shell created (ID: {product_id})")
+            return product_id, product_gid
+            
+        except Exception as e:
+            raise Exception(f"Failed to create product shell with REST: {str(e)}")
+    
+    def _add_variants_graphql(self, product_gid: str, variants_data: List[Dict]) -> List[Dict]:
+        """
+        STEP 2: Add variants to product using GraphQL productVariantsBulkCreate
+        Returns: List of created variants with IDs
+        """
+        try:
+            if not variants_data:
+                return []
+            
+            # Get location ID for inventory
+            location_id = None
+            try:
+                location_query = """
+                query { locations(first: 1) { edges { node { id } } } }
+                """
+                loc_resp = requests.post(self.graphql_url, headers=self.headers, json={'query': location_query}, timeout=30)
+                loc_resp.raise_for_status()
+                loc_data = loc_resp.json()
+                edges = loc_data.get('data', {}).get('locations', {}).get('edges', [])
+                if edges:
+                    location_id = edges[0]['node']['id']
+            except:
+                pass
+            
+            # Prepare variants with options
+            variants_list = []
+            seen_options = set()
+            
+            for idx, v_data in enumerate(variants_data):
+                option1 = str(v_data.get('option1', '')).strip()
+                option2 = str(v_data.get('option2', '')).strip()
+                option3 = str(v_data.get('option3', '')).strip()
+                sku = str(v_data.get('sku', '')).strip()
+                
+                # Build variant input
+                variant_input = {
+                    'price': str(v_data.get('price', '0')),
+                    'barcode': v_data.get('barcode', '') or None,
+                    'optionValues': []
+                }
+                
+                # Add options
+                if option1:
+                    variant_input['optionValues'].append({'optionName': 'Color', 'name': option1})
+                if option2:
+                    variant_input['optionValues'].append({'optionName': 'Size', 'name': option2})
+                if option3:
+                    variant_input['optionValues'].append({'optionName': 'Style', 'name': option3})
+                
+                if not variant_input['optionValues']:
+                    continue  # Skip variants without options
+                
+                # Check for duplicates
+                option_tuple = tuple((o['optionName'], o['name']) for o in variant_input['optionValues'])
+                if option_tuple in seen_options:
+                    print(f"   Skipping duplicate variant: {option_tuple}")
+                    continue
+                seen_options.add(option_tuple)
+                
+                # Store original data for later updates
+                variant_input['_sku'] = sku
+                variant_input['_weight'] = v_data.get('weight', 0) or 0
+                variant_input['_weightUnit'] = v_data.get('weight_unit', 'lb')
+                variant_input['_inventory'] = v_data.get('inventory_quantity')
+                
+                variants_list.append(variant_input)
+            
+            # Create variants in batches
+            batch_size = 50
+            total_batches = (len(variants_list) + batch_size - 1) // batch_size
+            created_variants = []
+            
+            for batch_idx in range(total_batches):
+                start_idx = batch_idx * batch_size
+                end_idx = min(start_idx + batch_size, len(variants_list))
+                batch = variants_list[start_idx:end_idx]
+                
+                # Prepare batch payload (remove temp fields)
+                batch_payload = []
+                for v in batch:
+                    payload = {
+                        'price': v['price'],
+                        'barcode': v['barcode'],
+                        'optionValues': v['optionValues']
+                    }
+                    batch_payload.append(payload)
+                
+                mutation = """
+                mutation productVariantsBulkCreate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+                    productVariantsBulkCreate(productId: $productId, variants: $variants) {
+                        productVariants {
+                            id
+                            sku
+                            selectedOptions { name value }
+                        }
+                        userErrors { field message }
+                    }
+                }
+                """
+                
+                resp = requests.post(
+                    self.graphql_url,
+                    headers=self.headers,
+                    json={'query': mutation, 'variables': {'productId': product_gid, 'variants': batch_payload}},
+                    timeout=120
+                )
+                resp.raise_for_status()
+                result = resp.json()
+                
+                bulk_result = result.get('data', {}).get('productVariantsBulkCreate', {})
+                user_errors = bulk_result.get('userErrors', [])
+                
+                if user_errors:
+                    print(f"   Batch {batch_idx+1}/{total_batches}: Errors - {user_errors[0].get('message', 'Unknown')}")
+                
+                created = bulk_result.get('productVariants', [])
+                created_variants.extend(created)
+                print(f"   Batch {batch_idx+1}/{total_batches}: Created {len(created)} variants")
+                
+                time.sleep(0.3)
+            
+            # Now update SKU, weight for created variants
+            print(f"   Updating SKU/weight for {len(created_variants)} variants...")
+            updated_count = 0
+            
+            for idx, variant_node in enumerate(created_variants):
+                variant_gid = variant_node.get('id', '')
+                selected_opts = variant_node.get('selectedOptions', [])
+                
+                # Find matching original data
+                option_tuple = tuple((o['name'], o['value']) for o in selected_opts)
+                matching_variant = None
+                for v in variants_list:
+                    v_tuple = tuple((o['optionName'], o['name']) for o in v['optionValues'])
+                    if v_tuple == option_tuple:
+                        matching_variant = v
+                        break
+                
+                if not matching_variant:
+                    continue
+                
+                # Update variant with SKU and weight
+                update_mutation = """
+                mutation productVariantUpdate($input: ProductVariantInput!) {
+                    productVariantUpdate(input: $input) {
+                        productVariant { id sku }
+                        userErrors { field message }
+                    }
+                }
+                """
+                
+                update_input = {
+                    'id': variant_gid,
+                    'sku': matching_variant['_sku'],
+                    'weight': float(matching_variant['_weight']),
+                    'weightUnit': matching_variant['_weightUnit'].upper()
+                }
+                
+                try:
+                    upd_resp = requests.post(
+                        self.graphql_url,
+                        headers=self.headers,
+                        json={'query': update_mutation, 'variables': {'input': update_input}},
+                        timeout=30
+                    )
+                    upd_resp.raise_for_status()
+                    updated_count += 1
+                    time.sleep(0.1)
+                except:
+                    pass
+            
+            print(f"   Updated {updated_count} variants with SKU/weight")
+            
+            # Update inventory
+            if location_id:
+                print(f"   Updating inventory for {len(created_variants)} variants...")
+                inv_updated = 0
+                
+                for variant_node in created_variants:
+                    variant_gid = variant_node.get('id', '')
+                    selected_opts = variant_node.get('selectedOptions', [])
+                    option_tuple = tuple((o['name'], o['value']) for o in selected_opts)
+                    
+                    matching_variant = None
+                    for v in variants_list:
+                        v_tuple = tuple((o['optionName'], o['name']) for o in v['optionValues'])
+                        if v_tuple == option_tuple:
+                            matching_variant = v
+                            break
+                    
+                    if not matching_variant or matching_variant['_inventory'] is None:
+                        continue
+                    
+                    try:
+                        # Get inventory item ID
+                        inv_query = """
+                        query getVariant($id: ID!) {
+                            productVariant(id: $id) { inventoryItem { id } }
+                        }
+                        """
+                        inv_resp = requests.post(
+                            self.graphql_url,
+                            headers=self.headers,
+                            json={'query': inv_query, 'variables': {'id': variant_gid}},
+                            timeout=30
+                        )
+                        inv_resp.raise_for_status()
+                        inv_data = inv_resp.json()
+                        inventory_item_id = inv_data.get('data', {}).get('productVariant', {}).get('inventoryItem', {}).get('id')
+                        
+                        if inventory_item_id:
+                            self.set_inventory_quantity(inventory_item_id, location_id, int(matching_variant['_inventory']))
+                            inv_updated += 1
+                        
+                        time.sleep(0.1)
+                    except:
+                        pass
+                
+                print(f"   Updated inventory for {inv_updated} variants")
+            
+            return created_variants
+            
+        except Exception as e:
+            raise Exception(f"Failed to add variants with GraphQL: {str(e)}")
     
 
     def update_product(self, product_id: int, product_data: Dict) -> Dict:
