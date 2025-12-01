@@ -506,6 +506,11 @@ class ShopifyClient:
                 print(f"Warning: Could not fetch location ID: {e}")
             
             # Step 4: Add variants using productVariantCreate (one by one)
+            # CRITICAL: Shopify requires at least 1 variant per product
+            if not variants or len(variants) == 0:
+                raise Exception("Product must have at least 1 variant. No variants provided in product_data.")
+            
+            print(f"Processing {len(variants)} variants for product creation...")
             seen_variant_keys = set()
             seen_option_combinations = set()
             unique_variants = []
@@ -526,8 +531,11 @@ class ShopifyClient:
                         option1 = f"{option1}-{sku[:6]}"
                         print(f"Warning: Duplicate option combination detected. Modified option1 to: {option1} for SKU: {sku}")
                     else:
-                        print(f"Warning: Duplicate option combination - skipping variant SKU: {sku}")
-                        continue
+                        print(f"Warning: Duplicate option combination - modifying SKU: {sku}")
+                        if not option1:
+                            option1 = f"Option1-{sku[:6]}"
+                        if not option2:
+                            option2 = f"Option2-{sku[:6]}"
                 
                 seen_option_combinations.add((option1, option2, option3))
                 
@@ -538,13 +546,14 @@ class ShopifyClient:
                 seen_variant_keys.add(variant_key)
                 
                 variant_input = {
-                    'sku': sku,
+                    'sku': sku if sku else None,
                     'price': str(variant_data.get('price', '0')),
                     'barcode': variant_data.get('barcode', '') or None,
                     'weight': variant_data.get('weight', 0) or 0,
                     'weightUnit': variant_data.get('weight_unit', 'POUNDS').upper()
                 }
                 
+                # CRITICAL: selectedOptions is REQUIRED for variants when product has options
                 selected_options = []
                 if option1:
                     selected_options.append({'name': 'Color', 'value': option1})
@@ -553,8 +562,12 @@ class ShopifyClient:
                 if option3:
                     selected_options.append({'name': 'Style', 'value': option3})
                 
-                if selected_options:
-                    variant_input['selectedOptions'] = selected_options
+                # If no options, create default option to ensure variant is created
+                if not selected_options:
+                    print(f"Warning: Variant {sku} has no options, creating default option")
+                    selected_options.append({'name': 'Default', 'value': sku if sku else f'Variant-{len(unique_variants)+1}'})
+                
+                variant_input['selectedOptions'] = selected_options
                 
                 if location_id and variant_data.get('inventory_quantity'):
                     variant_input['inventoryQuantities'] = [{
@@ -571,7 +584,13 @@ class ShopifyClient:
                 variant_input['_metafields'] = variant_data.get('metafields', {})
                 unique_variants.append(variant_input)
             
-            if unique_variants:
+            # CRITICAL: Must have at least 1 variant
+            if not unique_variants or len(unique_variants) == 0:
+                raise Exception("No valid variants to create. All variants were filtered out or invalid.")
+            
+            print(f"Creating {len(unique_variants)} variants (from {len(variants)} input variants)...")
+            
+            if True:  # Always create variants
                 variants_list = []
                 variant_images_map = {}
                 variant_metafields_map = {}
@@ -622,12 +641,13 @@ class ShopifyClient:
                     if variant_input.get('sku'):
                         variant_payload['sku'] = variant_input['sku']
                     
+                    # CRITICAL: selectedOptions is REQUIRED - should never be empty after our fix above
                     if variant_input.get('selectedOptions'):
                         variant_payload['selectedOptions'] = variant_input['selectedOptions']
                     else:
-                        print(f"Warning: Variant {variant_sku} has no selectedOptions, skipping...")
-                        failed_count += 1
-                        continue
+                        # Fallback: create default option
+                        print(f"CRITICAL ERROR: Variant {variant_sku} has no selectedOptions, creating default...")
+                        variant_payload['selectedOptions'] = [{'name': 'Default', 'value': variant_sku if variant_sku else f'Variant-{idx+1}'}]
                     
                     if variant_input.get('inventoryQuantities'):
                         variant_payload['inventoryQuantities'] = variant_input['inventoryQuantities']
@@ -693,11 +713,18 @@ class ShopifyClient:
                         continue
                 
                 print(f"Variant creation complete: {created_count} successful, {failed_count} failed out of {len(unique_variants)} total")
+                
+                # CRITICAL: If no variants were created, this is a fatal error
+                if created_count == 0:
+                    raise Exception(f"CRITICAL: Failed to create any variants for product {product.get('title')}. Product created but has no variants.")
+            else:
+                raise Exception("CRITICAL: No variants to create. Product cannot exist without variants.")
             
             # Step 5: Add product images
             product_images = product_data.get('images', [])
             if product_images:
-                print(f"Adding {len(product_images)} product images...")
+                print(f"Adding {len(product_images)} product-level images...")
+                image_count = 0
                 for idx, img_url in enumerate(product_images):
                     if not img_url or not img_url.strip():
                         continue
@@ -741,16 +768,19 @@ class ShopifyClient:
                             if user_errors:
                                 print(f"Warning: User errors adding product image {idx+1}: {user_errors}")
                             else:
-                                print(f"Successfully added product image {idx+1}/{len(product_images)}")
+                                image_count += 1
+                                print(f"Successfully added product image {image_count}/{len(product_images)}")
                         time.sleep(0.15)
                     except Exception as e:
                         print(f"Warning: Could not add product image {idx+1} ({img_url[:50]}...): {e}")
+                print(f"Product images complete: {image_count}/{len(product_images)} images added")
             else:
                 print("Warning: No product images provided in product_data")
             
             # Step 6: Add variant-specific images
-            if variant_images_map:
-                print(f"Adding variant images for {len(variant_images_map)} variants...")
+            if variant_images_map and len(variant_images_map) > 0:
+                print(f"Adding variant-specific images for {len(variant_images_map)} variants...")
+                variant_image_count = 0
                 for variant_sku, image_url in variant_images_map.items():
                     if not image_url or not image_url.strip():
                         continue
@@ -812,14 +842,16 @@ class ShopifyClient:
                                 if user_errors:
                                     print(f"Warning: User errors adding variant image for {variant_sku}: {user_errors}")
                                 else:
-                                    print(f"Successfully added variant image for SKU: {variant_sku}")
+                                    variant_image_count += 1
+                                    print(f"Successfully added variant image for SKU: {variant_sku} ({variant_image_count}/{len(variant_images_map)})")
                             time.sleep(0.15)
                         except Exception as e:
                             print(f"Warning: Could not add variant image for {variant_sku}: {e}")
                     else:
                         print(f"Warning: Could not find variant with SKU {variant_sku} for image mapping")
+                print(f"Variant images complete: {variant_image_count}/{len(variant_images_map)} variant images added")
             else:
-                print("Warning: No variant images provided in variant_images_map")
+                print(f"Warning: No variant images to add (variant_images_map is empty or None)")
             
             # Step 7: Add product-level metafields
             if product_data.get('metafields'):
