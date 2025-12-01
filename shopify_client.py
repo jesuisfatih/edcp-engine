@@ -553,8 +553,11 @@ class ShopifyClient:
                     'weightUnit': variant_data.get('weight_unit', 'POUNDS').upper()
                 }
                 
-                # CRITICAL: selectedOptions is REQUIRED for variants when product has options
+                # CRITICAL: selectedOptions must match the option names we set in Step 2
+                # Option names MUST match exactly: 'Color', 'Size', 'Style' (or 'Title' if default)
                 selected_options = []
+                
+                # Match option names to what we set in productOptionsUpdate
                 if option1:
                     selected_options.append({'name': 'Color', 'value': option1})
                 if option2:
@@ -562,12 +565,17 @@ class ShopifyClient:
                 if option3:
                     selected_options.append({'name': 'Style', 'value': option3})
                 
-                # If no options, create default option to ensure variant is created
+                # CRITICAL: If no options provided, we MUST have at least one option value
+                # This should match the default 'Title' option we created
                 if not selected_options:
-                    print(f"Warning: Variant {sku} has no options, creating default option")
-                    selected_options.append({'name': 'Default', 'value': sku if sku else f'Variant-{len(unique_variants)+1}'})
+                    print(f"⚠️ WARNING: Variant {sku} has no option values, using SKU as default option value")
+                    selected_options.append({'name': 'Title', 'value': sku if sku else f'Variant-{len(unique_variants)+1}'})
                 
                 variant_input['selectedOptions'] = selected_options
+                
+                # DEBUG: Log first few variants
+                if len(unique_variants) < 3:
+                    print(f"DEBUG: Variant {len(unique_variants)+1} selectedOptions: {selected_options}")
                 
                 if location_id and variant_data.get('inventory_quantity'):
                     variant_input['inventoryQuantities'] = [{
@@ -656,6 +664,11 @@ class ShopifyClient:
                         variant_payload['inventoryPolicy'] = variant_input['inventoryPolicy']
                     
                     try:
+                        # DEBUG: Log variant payload before sending
+                        if idx < 3:  # Log first 3 variants for debugging
+                            print(f"DEBUG: Creating variant {idx+1}/{len(unique_variants)} - SKU: {variant_sku}")
+                            print(f"DEBUG: Variant payload: {variant_payload}")
+                        
                         variant_response = requests.post(
                             self.graphql_url,
                             headers=self.headers,
@@ -671,9 +684,15 @@ class ShopifyClient:
                         variant_response.raise_for_status()
                         variant_result = variant_response.json()
                         
+                        # DEBUG: Log response for first few variants
+                        if idx < 3:
+                            print(f"DEBUG: Variant {idx+1} response: {variant_result}")
+                        
                         if 'errors' in variant_result:
                             error_messages = [e.get('message', str(e)) for e in variant_result['errors']]
-                            print(f"Error creating variant {variant_sku} ({idx+1}/{len(unique_variants)}): {', '.join(error_messages)}")
+                            error_details = f"GraphQL errors for variant {variant_sku} ({idx+1}/{len(unique_variants)}): {', '.join(error_messages)}"
+                            print(f"❌ {error_details}")
+                            print(f"   Payload was: {variant_payload}")
                             failed_count += 1
                             continue
                         
@@ -682,7 +701,9 @@ class ShopifyClient:
                         
                         if variant_user_errors:
                             error_messages = [e.get('message', str(e)) for e in variant_user_errors]
-                            print(f"Error creating variant {variant_sku} ({idx+1}/{len(unique_variants)}): {', '.join(error_messages)}")
+                            error_details = f"User errors for variant {variant_sku} ({idx+1}/{len(unique_variants)}): {', '.join(error_messages)}"
+                            print(f"❌ {error_details}")
+                            print(f"   Payload was: {variant_payload}")
                             failed_count += 1
                             continue
                         
@@ -699,24 +720,54 @@ class ShopifyClient:
                                 'price': variant_node.get('price', '0')
                             })
                             created_count += 1
-                            if (idx + 1) % 10 == 0:
-                                print(f"Progress: {idx+1}/{len(unique_variants)} variants created ({created_count} successful, {failed_count} failed)")
+                            if idx < 5 or (idx + 1) % 10 == 0:
+                                print(f"✅ Variant {idx+1}/{len(unique_variants)} created: SKU={variant_sku_created}, ID={variant_id}")
                         else:
-                            print(f"Warning: Variant {variant_sku} created but no variant node returned")
+                            error_msg = f"CRITICAL: Variant {variant_sku} mutation succeeded but no variant node returned in response"
+                            print(f"❌ {error_msg}")
+                            print(f"   Full response: {variant_result}")
                             failed_count += 1
                         
                         time.sleep(0.1)
                         
+                    except requests.exceptions.HTTPError as e:
+                        error_msg = f"HTTP Error creating variant {variant_sku} ({idx+1}/{len(unique_variants)}): {e}"
+                        if hasattr(e, 'response') and e.response is not None:
+                            try:
+                                error_body = e.response.json()
+                                error_msg += f" | Response: {error_body}"
+                            except:
+                                error_msg += f" | Response text: {e.response.text[:200]}"
+                        print(f"❌ {error_msg}")
+                        failed_count += 1
+                        continue
                     except Exception as e:
-                        print(f"Exception creating variant {variant_sku} ({idx+1}/{len(unique_variants)}): {e}")
+                        error_msg = f"Exception creating variant {variant_sku} ({idx+1}/{len(unique_variants)}): {type(e).__name__}: {str(e)}"
+                        print(f"❌ {error_msg}")
+                        import traceback
+                        print(f"   Traceback: {traceback.format_exc()[:300]}")
                         failed_count += 1
                         continue
                 
-                print(f"Variant creation complete: {created_count} successful, {failed_count} failed out of {len(unique_variants)} total")
+                print(f"📊 Variant creation summary: {created_count} successful, {failed_count} failed out of {len(unique_variants)} total")
                 
                 # CRITICAL: If no variants were created, this is a fatal error
                 if created_count == 0:
-                    raise Exception(f"CRITICAL: Failed to create any variants for product {product.get('title')}. Product created but has no variants.")
+                    error_details = f"CRITICAL: Failed to create any variants for product '{product.get('title')}'. "
+                    error_details += f"Product ID {product_id} was created but has no variants. "
+                    error_details += f"Attempted to create {len(unique_variants)} variants, all failed. "
+                    error_details += f"Product GID: {product_gid}"
+                    
+                    # Try to delete the orphaned product
+                    try:
+                        print(f"⚠️ Attempting to delete orphaned product {product_id}...")
+                        self.delete_product_by_id(product_id)
+                        print(f"✅ Orphaned product {product_id} deleted successfully")
+                    except Exception as delete_error:
+                        print(f"⚠️ Could not delete orphaned product {product_id}: {delete_error}")
+                        error_details += f" (Orphaned product {product_id} could not be deleted: {delete_error})"
+                    
+                    raise Exception(error_details)
             else:
                 raise Exception("CRITICAL: No variants to create. Product cannot exist without variants.")
             
