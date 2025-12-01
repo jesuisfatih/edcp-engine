@@ -1775,7 +1775,16 @@ class ShopifyClient:
                 try:
                     url = f"{self.base_url}/products/{product_id}/variants.json"
                     resp = requests.post(url, headers=self.headers, json=variant_payload, timeout=30)
-                    resp.raise_for_status()
+                    
+                    if resp.status_code not in [200, 201]:
+                        error_msg = f"HTTP {resp.status_code}"
+                        try:
+                            error_data = resp.json()
+                            error_msg += f": {error_data}"
+                        except:
+                            error_msg += f": {resp.text[:200]}"
+                        print(f"   ❌ Variant {idx+1} ({sku}): {error_msg}")
+                        continue
                     
                     result = resp.json()
                     variant = result.get('variant', {})
@@ -1786,14 +1795,18 @@ class ShopifyClient:
                             'sku': variant.get('sku', ''),
                             'selectedOptions': []
                         })
-                    
-                    if (idx + 1) % 50 == 0:
-                        print(f"   Added {idx + 1}/{len(variants_data)} variants...")
+                        
+                        if (idx + 1) % 50 == 0:
+                            print(f"   ✅ Added {idx + 1}/{len(variants_data)} variants...")
+                    else:
+                        print(f"   ⚠️ Variant {idx+1} ({sku}): No ID returned")
                     
                     time.sleep(0.15)  # Rate limiting
                     
                 except Exception as e:
-                    print(f"   Error adding variant {sku}: {str(e)[:100]}")
+                    print(f"   ❌ Exception variant {idx+1} ({sku}): {str(e)[:150]}")
+                    import traceback
+                    traceback.print_exc()
             
             print(f"   Successfully added {len(created_variants)} variants")
             return created_variants
