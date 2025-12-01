@@ -1685,8 +1685,30 @@ class ShopifyClient:
             else:
                 tags_str = tags
             
-            # Product payload WITHOUT options and variants
-            # Options will be auto-created by Shopify when we add variants via GraphQL
+            # Product payload WITH first variant (creates options automatically)
+            # First variant establishes the option structure for subsequent variants
+            variants_data = product_data.get('variants', [])
+            first_variant_data = None
+            
+            if variants_data:
+                first_variant_data = variants_data[0]
+                first_variant = {
+                    'option1': str(first_variant_data.get('option1', 'Default')).strip() or 'Default',
+                    'option2': str(first_variant_data.get('option2', 'One Size')).strip() or 'One Size',
+                    'price': str(first_variant_data.get('price', '0')),
+                    'sku': str(first_variant_data.get('sku', '')).strip(),
+                    'barcode': first_variant_data.get('barcode', '') or None,
+                    'weight': float(first_variant_data.get('weight', 0) or 0),
+                    'weight_unit': 'lb',
+                    'inventory_management': 'shopify',
+                    'inventory_policy': 'deny'
+                }
+                
+                # Add inventory if available
+                inventory_qty = first_variant_data.get('inventory_quantity')
+                if inventory_qty is not None:
+                    first_variant['inventory_quantity'] = int(inventory_qty)
+            
             payload = {
                 'product': {
                     'title': product_data.get('title', 'Product'),
@@ -1698,7 +1720,10 @@ class ShopifyClient:
                 }
             }
             
-            print(f"   Creating product without options (will be auto-created from variants)")
+            # Add first variant to establish options
+            if first_variant_data:
+                payload['product']['variants'] = [first_variant]
+                print(f"   Creating product WITH first variant (establishes Color+Size options)")
             
             url = f"{self.base_url}/products.json"
             response = requests.post(url, headers=self.headers, json=payload, timeout=30)
@@ -1740,7 +1765,15 @@ class ShopifyClient:
             product_id = product_gid.replace('gid://shopify/Product/', '')
             created_variants = []
             
-            print(f"   Adding {len(variants_data)} variants using REST API...")
+            # Skip first variant (already created in STEP 1)
+            remaining_variants = variants_data[1:] if len(variants_data) > 1 else []
+            
+            if not remaining_variants:
+                print(f"   Only 1 variant, already created in STEP 1")
+                # Return the first variant info
+                return [{'id': f"gid://shopify/ProductVariant/{product['variants'][0]['id']}", 'sku': product['variants'][0].get('sku', ''), 'selectedOptions': []}] if 'variants' in product and product['variants'] else []
+            
+            print(f"   Adding {len(remaining_variants)} remaining variants using REST API...")
             
             for idx, v_data in enumerate(variants_data):
                 option1 = str(v_data.get('option1', '')).strip()
@@ -1798,8 +1831,8 @@ class ShopifyClient:
                             'selectedOptions': []
                         })
                         
-                        if (idx + 1) % 50 == 0:
-                            print(f"   ✅ Added {idx + 1}/{len(variants_data)} variants...")
+                    if (idx + 1) % 50 == 0:
+                        print(f"   ✅ Added {idx + 1}/{len(remaining_variants)} remaining variants (total: {idx + 2}/{len(variants_data)})")
                     else:
                         print(f"   ⚠️ Variant {idx+1} ({sku}): No ID returned")
                     
@@ -1810,7 +1843,7 @@ class ShopifyClient:
                     import traceback
                     traceback.print_exc()
             
-            print(f"   Successfully added {len(created_variants)} variants")
+            print(f"   Successfully added {len(created_variants)} remaining variants (total with first: {len(created_variants) + 1})")
             return created_variants
             
         except Exception as e:
