@@ -777,7 +777,7 @@ class ShopifyClient:
                 option2 = str(variant_data.get('option2') or '').strip()
                 option3 = str(variant_data.get('option3') or '').strip()
                 sku = str(variant_data.get('sku') or '').strip()
-                
+
                 # CRITICAL: Shopify doesn't allow duplicate option combinations
                 option_combination = (option1, option2, option3)
                 if option_combination in seen_option_combinations:
@@ -793,9 +793,9 @@ class ShopifyClient:
                             option1 = f"Option1-{sku[:6]}"
                         if not option2:
                             option2 = f"Option2-{sku[:6]}"
-                
+
                 seen_option_combinations.add((option1, option2, option3))
-                
+
                 variant_key = (option1, option2, option3, sku)
                 if variant_key in seen_variant_keys:
                     print(f"Warning: Duplicate variant skipped - SKU: {sku}")
@@ -810,25 +810,41 @@ class ShopifyClient:
                     'weightUnit': self._normalize_weight_unit(variant_data.get('weight_unit'))
                 }
                 
-                # CRITICAL: selectedOptions must match the option names we set in Step 2
-                # Option names MUST match exactly: 'Color', 'Size', 'Style' (or 'Title' if default)
+                # CRITICAL FIX: selectedOptions MUST include values for ALL productOptions
+                # If productOptions = ['Color', 'Size'], then EVERY variant MUST have both Color AND Size values
+                # Shopify requires that all defined options have values in each variant
                 selected_options = []
                 
-                # Match option names to what we set in productOptionsUpdate
-                if option1:
-                    selected_options.append({'name': 'Color', 'value': option1})
-                if option2:
-                    selected_options.append({'name': 'Size', 'value': option2})
-                if option3:
-                    selected_options.append({'name': 'Style', 'value': option3})
+                # Build selectedOptions based on what we defined in productOptions
+                # We MUST provide values for ALL options defined in productOptions
+                for opt_name in option_names:
+                    if opt_name == 'Color':
+                        # Use option1 if available, otherwise use SKU-based fallback
+                        value = option1 if option1 else (f"Color-{sku[:8]}" if sku else f"Color-{len(unique_variants)+1}")
+                        selected_options.append({'name': 'Color', 'value': value})
+                    elif opt_name == 'Size':
+                        # Use option2 if available, otherwise use SKU-based fallback
+                        value = option2 if option2 else (f"Size-{sku[:8]}" if sku else f"Size-{len(unique_variants)+1}")
+                        selected_options.append({'name': 'Size', 'value': value})
+                    elif opt_name == 'Style':
+                        # Use option3 if available, otherwise use SKU-based fallback
+                        value = option3 if option3 else (f"Style-{sku[:8]}" if sku else f"Style-{len(unique_variants)+1}")
+                        selected_options.append({'name': 'Style', 'value': value})
+                    elif opt_name == 'Title':
+                        # Default option - use SKU or variant number
+                        value = sku if sku else f"Variant-{len(unique_variants)+1}"
+                        selected_options.append({'name': 'Title', 'value': value})
                 
-                # CRITICAL: If no options provided, we MUST have at least one option value
-                # This should match the default 'Title' option we created
+                # CRITICAL: Must have at least one option value
                 if not selected_options:
                     print(f"⚠️ WARNING: Variant {sku} has no option values, using SKU as default option value")
                     selected_options.append({'name': 'Title', 'value': sku if sku else f'Variant-{len(unique_variants)+1}'})
                 
                 variant_input['selectedOptions'] = selected_options
+                
+                # DEBUG: Log first few variants to verify option matching
+                if len(unique_variants) < 3:
+                    print(f"DEBUG: Variant {len(unique_variants)+1} - productOptions: {option_names}, selectedOptions: {selected_options}")
                 
                 # DEBUG: Log first few variants
                 if len(unique_variants) < 3:
