@@ -588,6 +588,26 @@ class SyncManager:
         print(f"   Images from DB: {len(images)}")
         
         # Build variants list
+        def _normalize_weight_unit(unit):
+            """Convert stored weight units into Shopify's expected enum values"""
+            if not unit:
+                return 'POUNDS'
+            mapping = {
+                'lb': 'POUNDS',
+                'lbs': 'POUNDS',
+                'pound': 'POUNDS',
+                'pounds': 'POUNDS',
+                'kg': 'KILOGRAMS',
+                'kilogram': 'KILOGRAMS',
+                'kilograms': 'KILOGRAMS',
+                'g': 'GRAMS',
+                'gram': 'GRAMS',
+                'grams': 'GRAMS',
+                'oz': 'OUNCES',
+                'ounce': 'OUNCES',
+                'ounces': 'OUNCES'
+            }
+            return mapping.get(str(unit).strip().lower(), 'POUNDS')
         variant_list = []
         variant_images_map = {}
         
@@ -611,7 +631,7 @@ class SyncManager:
                 'option2': size_name,    # Size
                 'barcode': variant.get('barcode'),
                 'weight': variant.get('weight', 0) or 0,
-                'weight_unit': variant.get('weight_unit', 'lb') or 'lb'
+                'weight_unit': _normalize_weight_unit(variant.get('weight_unit', 'lb'))
             }
             
             # Add variant image

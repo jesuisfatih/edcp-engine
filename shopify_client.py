@@ -40,6 +40,29 @@ class ShopifyClient:
                 # Fallback to direct REST API calls
                 self.use_library = False
     
+    def _normalize_weight_unit(self, unit: Optional[str]) -> str:
+        """Convert various weight unit inputs to Shopify enum values"""
+        if not unit:
+            return 'POUNDS'
+        
+        normalized = str(unit).strip().lower()
+        mapping = {
+            'lb': 'POUNDS',
+            'lbs': 'POUNDS',
+            'pound': 'POUNDS',
+            'pounds': 'POUNDS',
+            'kg': 'KILOGRAMS',
+            'kilogram': 'KILOGRAMS',
+            'kilograms': 'KILOGRAMS',
+            'g': 'GRAMS',
+            'gram': 'GRAMS',
+            'grams': 'GRAMS',
+            'oz': 'OUNCES',
+            'ounce': 'OUNCES',
+            'ounces': 'OUNCES'
+        }
+        return mapping.get(normalized, 'POUNDS')
+    
     def get_shop_info(self) -> Dict:
         """Get shop information"""
         try:
@@ -587,7 +610,7 @@ class ShopifyClient:
                     'price': str(variant_data.get('price', '0')),
                     'barcode': variant_data.get('barcode', '') or None,
                     'weight': variant_data.get('weight', 0) or 0,
-                    'weightUnit': variant_data.get('weight_unit', 'POUNDS').upper()
+                    'weightUnit': self._normalize_weight_unit(variant_data.get('weight_unit'))
                 }
                 
                 # CRITICAL: selectedOptions must match the option names we set in Step 2
@@ -706,7 +729,7 @@ class ShopifyClient:
                         'price': variant_input.get('price', '0'),
                         'barcode': variant_input.get('barcode') or None,
                         'weight': variant_input.get('weight', 0) or 0,
-                        'weightUnit': variant_input.get('weightUnit', 'POUNDS')
+                        'weightUnit': self._normalize_weight_unit(variant_input.get('weightUnit'))
                     }
                     
                     if variant_input.get('sku'):
@@ -1442,7 +1465,7 @@ class ShopifyClient:
                             variant_input['barcode'] = variant_data['barcode']
                         if 'weight' in variant_data:
                             variant_input['weight'] = variant_data.get('weight', 0)
-                            variant_input['weightUnit'] = variant_data.get('weight_unit', 'POUNDS').upper()
+                            variant_input['weightUnit'] = self._normalize_weight_unit(variant_data.get('weight_unit'))
                         
                         if location_id and variant_data.get('inventory_quantity') is not None:
                             variant_input['inventoryQuantities'] = [{
@@ -1502,7 +1525,7 @@ class ShopifyClient:
                             'sku': variant_sku if variant_sku else None,
                             'barcode': variant_data.get('barcode', '') or None,
                             'weight': variant_data.get('weight', 0) or 0,
-                            'weightUnit': variant_data.get('weight_unit', 'POUNDS').upper()
+                            'weightUnit': self._normalize_weight_unit(variant_data.get('weight_unit'))
                         }
                         
                         if new_selected_options:
