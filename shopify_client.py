@@ -19,7 +19,7 @@ class ShopifyClient:
             self.shop_domain = f"https://{self.shop_domain}"
         
         self.access_token = access_token
-        self.api_version = "2025-01"
+        self.api_version = "2025-10"
         self.base_url = f"{self.shop_domain}/admin/api/{self.api_version}"
         self.graphql_url = f"{self.shop_domain}/admin/api/{self.api_version}/graphql.json"
         self.headers = {
