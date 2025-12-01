@@ -635,7 +635,7 @@ class SyncManager:
             }
             
             # Add variant image
-            variant_image_url = variant.get('variant_image_url', '').strip()
+            variant_image_url = (variant.get('variant_image_url') or '').strip()
             if variant_image_url:
                 variant_data['image'] = variant_image_url
                 variant_images_map[sku] = variant_image_url

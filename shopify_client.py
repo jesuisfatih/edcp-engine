@@ -429,12 +429,21 @@ class ShopifyClient:
             if variants and not option_names:
                 option_names.append('Title')
 
+            # Normalize tags (accept str or list)
+            raw_tags = product_data.get('tags', [])
+            if isinstance(raw_tags, str):
+                tags = [t.strip() for t in raw_tags.split(',') if t.strip()]
+            elif isinstance(raw_tags, list):
+                tags = raw_tags
+            else:
+                tags = []
+
             product_input = {
                 'title': product_data.get('title', 'Product'),
                 'descriptionHtml': product_data.get('description', '') or '',
                 'vendor': product_data.get('vendor', '') or '',
                 'productType': product_data.get('product_type', '') or '',
-                'tags': product_data.get('tags', '').split(',') if product_data.get('tags') else [],
+                'tags': tags,
                 'status': product_data.get('status', 'ACTIVE').upper(),
                 'options': [{'name': name} for name in option_names] if option_names else [{'name': 'Title'}]
             }
