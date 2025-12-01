@@ -51,6 +51,33 @@ class SyncManager:
         self.current_index = 0
         
         try:
+            # Inventory-only mode: just update qty on Shopify using cached products
+            if self.sync_options.get('inventory_only'):
+                self.message = 'Inventory-only sync: fetching products...'
+                fetcher = DataFetcher(self.ss_client, self.sync_id)
+                products = fetcher._get_products_to_sync(self.sync_options)
+                sku_qty = {}
+                for p in products:
+                    sku = p.get('sku')
+                    if sku:
+                        sku_qty[sku] = p.get('qty', 0) or 0
+                self.message = f'Updating inventory for {len(sku_qty)} SKUs...'
+                result = self.shopify_client.update_inventory_bulk(sku_qty)
+                self.status = 'completed'
+                self.progress = 100
+                self.message = f"Inventory sync done: {result.get('updated',0)} updated, {len(result.get('failed',[]))} failed"
+                save_sync_history(
+                    self.sync_id,
+                    self.status,
+                    len(sku_qty),
+                    0,
+                    0,
+                    len(result.get('failed', [])),
+                    self.message,
+                    self.sync_options
+                )
+                return
+
             # STEP 1: Fetch products from S&S API and cache in local database
             self.message = 'Fetching products from S&S Activewear...'
             self.progress = 5

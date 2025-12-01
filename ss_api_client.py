@@ -212,6 +212,25 @@ class SSActivewearClient:
             styles = styles[:limit]
         
         return styles
+
+    def get_specs(self, style: Optional[str] = None,
+                  specid: Optional[str] = None,
+                  fields: Optional[str] = None,
+                  limit: Optional[int] = None) -> List[Dict]:
+        """Get specs for styles"""
+        params = {}
+        if style:
+            params['style'] = style
+        if specid:
+            endpoint = f"specs/{specid}"
+        else:
+            endpoint = "specs/"
+        if fields:
+            params['fields'] = fields
+        specs = self._make_request(endpoint, params)
+        if limit:
+            specs = specs[:limit]
+        return specs
     
     def get_products(self, product_filter: Optional[str] = None,
                     style: Optional[str] = None,
@@ -346,4 +365,3 @@ class SSActivewearClient:
             time.sleep(0.5)  # Rate limiting
         
         return all_products
-

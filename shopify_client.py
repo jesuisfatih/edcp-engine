@@ -26,6 +26,7 @@ class ShopifyClient:
             "X-Shopify-Access-Token": access_token,
             "Content-Type": "application/json"
         }
+        self._primary_location_id = None
         
         # Try to initialize Shopify Python library
         self.use_library = False
@@ -137,6 +138,163 @@ class ShopifyClient:
             return all_collections
         except Exception as e:
             raise Exception(f"Failed to get collections: {str(e)}")
+
+    def get_primary_location_id(self) -> Optional[str]:
+        """Fetch and cache the first location ID"""
+        if self._primary_location_id:
+            return self._primary_location_id
+        try:
+            location_query = """
+            query {
+                locations(first: 1) {
+                    edges {
+                        node { id name }
+                    }
+                }
+            }
+            """
+            resp = requests.post(
+                self.graphql_url,
+                headers=self.headers,
+                json={'query': location_query},
+                timeout=30
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            edges = data.get('data', {}).get('locations', {}).get('edges', [])
+            if edges:
+                self._primary_location_id = edges[0]['node']['id']
+                return self._primary_location_id
+        except Exception as e:
+            print(f"Warning: could not fetch primary location: {e}")
+        return None
+
+    def get_variant_by_sku(self, sku: str) -> Optional[Dict]:
+        """Find a Shopify variant by SKU"""
+        try:
+            query = """
+            query ($query: String!) {
+                productVariants(first: 1, query: $query) {
+                    edges {
+                        node {
+                            id
+                            sku
+                            inventoryItem { id }
+                            product { id title }
+                        }
+                    }
+                }
+            }
+            """
+            resp = requests.post(
+                self.graphql_url,
+                headers=self.headers,
+                json={'query': query, 'variables': {'query': f"sku:{sku}" }},
+                timeout=30
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            edges = data.get('data', {}).get('productVariants', {}).get('edges', [])
+            if edges:
+                node = edges[0].get('node', {})
+                return {
+                    'id': node.get('id'),
+                    'sku': node.get('sku'),
+                    'inventory_item_id': node.get('inventoryItem', {}).get('id'),
+                    'product_id': node.get('product', {}).get('id')
+                }
+        except Exception as e:
+            print(f"Warning: get_variant_by_sku failed for {sku}: {e}")
+        return None
+
+    def get_inventory_level(self, inventory_item_id: str, location_id: str) -> Optional[int]:
+        """Get current inventory level for an item at a location"""
+        try:
+            query = """
+            query ($inventoryItemId: ID!, $locationId: ID!) {
+                inventoryLevel(inventoryItemId: $inventoryItemId, locationId: $locationId) {
+                    available
+                }
+            }
+            """
+            resp = requests.post(
+                self.graphql_url,
+                headers=self.headers,
+                json={'query': query, 'variables': {'inventoryItemId': inventory_item_id, 'locationId': location_id}},
+                timeout=30
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            level = data.get('data', {}).get('inventoryLevel', {})
+            if level:
+                return level.get('available')
+        except Exception as e:
+            print(f"Warning: get_inventory_level failed: {e}")
+        return None
+
+    def set_inventory_quantity(self, inventory_item_id: str, location_id: str, target_qty: int) -> bool:
+        """Set inventory to an absolute quantity by adjusting delta"""
+        try:
+            current = self.get_inventory_level(inventory_item_id, location_id)
+            if current is None:
+                return False
+            delta = target_qty - current
+            if delta == 0:
+                return True
+            mutation = """
+            mutation inventoryAdjustQuantity($input: InventoryAdjustQuantityInput!) {
+                inventoryAdjustQuantity(input: $input) {
+                    inventoryLevel { available }
+                    userErrors { field message }
+                }
+            }
+            """
+            resp = requests.post(
+                self.graphql_url,
+                headers=self.headers,
+                json={'query': mutation, 'variables': {'input': {
+                    'inventoryItemId': inventory_item_id,
+                    'locationId': location_id,
+                    'availableDelta': delta
+                }}},
+                timeout=30
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            if 'errors' in data:
+                print(f"Warning: inventoryAdjustQuantity errors: {data['errors']}")
+                return False
+            user_errors = data.get('data', {}).get('inventoryAdjustQuantity', {}).get('userErrors', [])
+            if user_errors:
+                print(f"Warning: inventoryAdjustQuantity userErrors: {user_errors}")
+                return False
+            return True
+        except Exception as e:
+            print(f"Warning: set_inventory_quantity failed: {e}")
+            return False
+
+    def update_inventory_bulk(self, sku_qty_map: Dict[str, int]) -> Dict:
+        """Update inventory for SKUs using S&S qty as absolute value"""
+        results = {'updated': 0, 'failed': []}
+        location_id = self.get_primary_location_id()
+        if not location_id:
+            results['failed'].append("No location_id available")
+            return results
+        for sku, qty in sku_qty_map.items():
+            try:
+                variant = self.get_variant_by_sku(sku)
+                if not variant or not variant.get('inventory_item_id'):
+                    results['failed'].append(f"{sku}: variant not found")
+                    continue
+                success = self.set_inventory_quantity(variant['inventory_item_id'], location_id, int(qty or 0))
+                if success:
+                    results['updated'] += 1
+                else:
+                    results['failed'].append(f"{sku}: adjust failed")
+                time.sleep(0.1)
+            except Exception as e:
+                results['failed'].append(f"{sku}: {e}")
+        return results
     
     def find_or_create_collection(self, title: str, handle: Optional[str] = None) -> Dict:
         """Find collection by title or create if not exists"""
