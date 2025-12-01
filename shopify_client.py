@@ -858,7 +858,7 @@ class ShopifyClient:
                     else:
                         print(f"CRITICAL ERROR: Variant {variant_sku} has no selectedOptions, cannot create variant without options")
                     
-                    bulk_variant_inputs.append(variant_payload)
+                            bulk_variant_inputs.append(variant_payload)
                     
                     if not bulk_variant_inputs:
                         print(f"⚠️ No valid variants in batch {batch_idx + 1}, skipping...")
@@ -941,6 +941,8 @@ class ShopifyClient:
                         
                     except Exception as e:
                         print(f"❌ Batch {batch_idx + 1} failed: {e}")
+                        import traceback
+                        traceback.print_exc()
                         # Continue to next batch
                     
                     # Rate limiting between batches
