@@ -701,9 +701,9 @@ class ShopifyClient:
             skip_variant_deletion = True
             if not skip_variant_deletion:
                 try:
-                print("🔍 Checking for existing variants (including default variant)...")
-                # Fetch ALL variants (not just first 10) using pagination
-                all_existing_variants = []
+                    print("🔍 Checking for existing variants (including default variant)...")
+                    # Fetch ALL variants (not just first 10) using pagination
+                    all_existing_variants = []
                 cursor = None
                 max_iterations = 10
                 iteration = 0
