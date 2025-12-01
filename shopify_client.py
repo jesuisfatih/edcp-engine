@@ -433,7 +433,7 @@ class ShopifyClient:
             product_id_str = product_gid.replace('gid://shopify/Product/', '')
             product_id = int(product_id_str) if product_id_str.isdigit() else None
             
-            # Step 2: Add product options
+            # Step 2: Add product options - CRITICAL: Must be done BEFORE creating variants
             if variants:
                 # Determine option names from variants
                 option_names = []
@@ -444,12 +444,22 @@ class ShopifyClient:
                 if any(v.get('option3') for v in variants):
                     option_names.append('Style')
                 
+                # CRITICAL: If no options detected, create a default option
+                if not option_names:
+                    print("⚠️ WARNING: No options detected in variants, creating default 'Title' option")
+                    option_names.append('Title')
+                
                 if option_names:
                     options_mutation = """
                     mutation productOptionsUpdate($productId: ID!, $options: [ProductOptionInput!]!) {
                         productOptionsUpdate(productId: $productId, options: $options) {
                             product {
                                 id
+                                options {
+                                    id
+                                    name
+                                    values
+                                }
                             }
                             userErrors {
                                 field
@@ -460,6 +470,8 @@ class ShopifyClient:
                     """
                     
                     options_input = [{'name': name} for name in option_names]
+                    
+                    print(f"📝 Adding {len(option_names)} product options: {option_names}")
                     
                     options_response = requests.post(
                         self.graphql_url,
@@ -474,7 +486,32 @@ class ShopifyClient:
                         timeout=30
                     )
                     options_response.raise_for_status()
-                    time.sleep(0.2)
+                    options_result = options_response.json()
+                    
+                    # Check for errors
+                    if 'errors' in options_result:
+                        error_messages = [e.get('message', str(e)) for e in options_result['errors']]
+                        raise Exception(f"Failed to add product options: {', '.join(error_messages)}")
+                    
+                    options_update = options_result.get('data', {}).get('productOptionsUpdate', {})
+                    user_errors = options_update.get('userErrors', [])
+                    if user_errors:
+                        error_messages = [e.get('message', str(e)) for e in user_errors]
+                        raise Exception(f"Failed to add product options: {', '.join(error_messages)}")
+                    
+                    # Verify options were added
+                    product_with_options = options_update.get('product', {})
+                    if product_with_options:
+                        added_options = product_with_options.get('options', [])
+                        print(f"✅ Product options added successfully: {[opt.get('name') for opt in added_options]}")
+                    else:
+                        print("⚠️ WARNING: Options update succeeded but could not verify options in response")
+                    
+                    time.sleep(0.3)  # Give Shopify time to process options
+                else:
+                    raise Exception("CRITICAL: Cannot create variants without product options")
+            else:
+                raise Exception("CRITICAL: Cannot create product without variants")
             
             # Step 3: Get location ID for inventory
             location_id = None
