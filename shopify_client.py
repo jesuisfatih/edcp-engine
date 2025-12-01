@@ -1729,9 +1729,80 @@ class ShopifyClient:
     
     def _add_variants_graphql(self, product_gid: str, variants_data: List[Dict]) -> List[Dict]:
         """
-        STEP 2: Add variants to product using GraphQL productVariantsBulkCreate
+        STEP 2: Add variants using REST API (simpler, more reliable)
+        REST API automatically creates options from variant data
         Returns: List of created variants with IDs
         """
+        try:
+            if not variants_data:
+                return []
+            
+            product_id = product_gid.replace('gid://shopify/Product/', '')
+            created_variants = []
+            
+            print(f"   Adding {len(variants_data)} variants using REST API...")
+            
+            for idx, v_data in enumerate(variants_data):
+                option1 = str(v_data.get('option1', '')).strip()
+                option2 = str(v_data.get('option2', '')).strip()
+                option3 = str(v_data.get('option3', '')).strip()
+                sku = str(v_data.get('sku', '')).strip()
+                
+                if not option1 and not option2:
+                    print(f"   Skipping variant without options: {sku}")
+                    continue
+                
+                variant_payload = {
+                    'variant': {
+                        'option1': option1 or None,
+                        'option2': option2 or None,
+                        'option3': option3 or None,
+                        'price': str(v_data.get('price', '0')),
+                        'sku': sku,
+                        'barcode': v_data.get('barcode', '') or None,
+                        'weight': float(v_data.get('weight', 0) or 0),
+                        'weight_unit': v_data.get('weight_unit', 'lb'),
+                        'inventory_management': 'shopify',
+                        'inventory_policy': 'deny'
+                    }
+                }
+                
+                # Add inventory if available
+                inventory_qty = v_data.get('inventory_quantity')
+                if inventory_qty is not None:
+                    variant_payload['variant']['inventory_quantity'] = int(inventory_qty)
+                
+                try:
+                    url = f"{self.base_url}/products/{product_id}/variants.json"
+                    resp = requests.post(url, headers=self.headers, json=variant_payload, timeout=30)
+                    resp.raise_for_status()
+                    
+                    result = resp.json()
+                    variant = result.get('variant', {})
+                    
+                    if variant.get('id'):
+                        created_variants.append({
+                            'id': f"gid://shopify/ProductVariant/{variant['id']}",
+                            'sku': variant.get('sku', ''),
+                            'selectedOptions': []
+                        })
+                    
+                    if (idx + 1) % 50 == 0:
+                        print(f"   Added {idx + 1}/{len(variants_data)} variants...")
+                    
+                    time.sleep(0.15)  # Rate limiting
+                    
+                except Exception as e:
+                    print(f"   Error adding variant {sku}: {str(e)[:100]}")
+            
+            print(f"   Successfully added {len(created_variants)} variants")
+            return created_variants
+            
+        except Exception as e:
+            raise Exception(f"Failed to add variants with REST: {str(e)}")
+    
+    def _add_variants_graphql_OLD(self, product_gid: str, variants_data: List[Dict]) -> List[Dict]:
+        """OLD: GraphQL variant creation - BACKUP ONLY"""
         try:
             if not variants_data:
                 return []
