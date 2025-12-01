@@ -642,17 +642,31 @@ class ShopifyClient:
                 
                 for v in unique_variants:
                     # CRITICAL FIX: Check both 'image' and '_image' keys (sync_manager uses 'image')
-                    image_url = v.pop('image', None) or v.pop('_image', None)
-                    metafields = v.pop('metafields', {}) or v.pop('_metafields', {})
+                    # Use get() instead of pop() to avoid modifying the dict during iteration
+                    image_url = v.get('image') or v.get('_image')
+                    metafields = v.get('metafields', {}) or v.get('_metafields', {})
                     variant_sku = v.get('sku', '')
+                    
                     if image_url and variant_sku:
                         variant_images_map[variant_sku] = image_url
-                        print(f"DEBUG: Mapped variant image for SKU {variant_sku}: {image_url[:50]}...")
+                        if len(variant_images_map) <= 3:
+                            print(f"📸 DEBUG: Mapped variant image for SKU {variant_sku}: {image_url[:60]}...")
+                    
                     if metafields and variant_sku:
                         variant_metafields_map[variant_sku] = metafields
+                    
+                    # Remove image and metafields from variant_input before sending to GraphQL
+                    v.pop('image', None)
+                    v.pop('_image', None)
+                    v.pop('metafields', None)
+                    v.pop('_metafields', None)
                 
-                print(f"DEBUG: Variant images map size: {len(variant_images_map)}")
-                print(f"DEBUG: Variant metafields map size: {len(variant_metafields_map)}")
+                print(f"📊 Variant images map: {len(variant_images_map)} variants with images")
+                print(f"📊 Variant metafields map: {len(variant_metafields_map)} variants with metafields")
+                
+                if len(variant_images_map) == 0:
+                    print(f"⚠️ WARNING: No variant images found in product_data!")
+                    print(f"   Checking first variant: {unique_variants[0] if unique_variants else 'N/A'}")
                 
                 variant_mutation = """
                 mutation productVariantCreate($input: ProductVariantInput!) {
@@ -820,8 +834,8 @@ class ShopifyClient:
             
             # Step 5: Add product images
             product_images = product_data.get('images', [])
-            if product_images:
-                print(f"Adding {len(product_images)} product-level images...")
+            if product_images and len(product_images) > 0:
+                print(f"📸 Adding {len(product_images)} product-level images...")
                 image_count = 0
                 for idx, img_url in enumerate(product_images):
                     if not img_url or not img_url.strip():
@@ -880,7 +894,8 @@ class ShopifyClient:
             
             # Step 6: Add variant-specific images
             if variant_images_map and len(variant_images_map) > 0:
-                print(f"Adding variant-specific images for {len(variant_images_map)} variants...")
+                print(f"📸 Adding variant-specific images for {len(variant_images_map)} variants...")
+                print(f"   Variant images map: {list(variant_images_map.keys())[:5]}...")  # Show first 5 SKUs
                 variant_image_count = 0
                 for variant_sku, image_url in variant_images_map.items():
                     if not image_url or not image_url.strip():
@@ -897,10 +912,20 @@ class ShopifyClient:
                     
                     if matching_variant:
                         # Use GID if available, otherwise construct from ID
-                        variant_gid = matching_variant.get('gid') or f"gid://shopify/ProductVariant/{matching_variant.get('id')}"
-                        if not variant_gid or 'None' in variant_gid:
-                            print(f"Warning: Invalid variant GID for SKU {variant_sku}, skipping image")
+                        variant_gid = matching_variant.get('gid')
+                        if not variant_gid:
+                            variant_id = matching_variant.get('id')
+                            if variant_id:
+                                variant_gid = f"gid://shopify/ProductVariant/{variant_id}"
+                            else:
+                                print(f"⚠️ Warning: No GID or ID for variant SKU {variant_sku}, skipping image")
+                                continue
+                        
+                        if 'None' in str(variant_gid):
+                            print(f"⚠️ Warning: Invalid variant GID for SKU {variant_sku}, skipping image")
                             continue
+                        
+                        print(f"   Adding image for variant SKU {variant_sku} (GID: {variant_gid})")
                         image_mutation = """
                         mutation productImageCreate($input: ImageInput!) {
                             productImageCreate(input: $input) {
@@ -945,15 +970,24 @@ class ShopifyClient:
                                     print(f"Warning: User errors adding variant image for {variant_sku}: {user_errors}")
                                 else:
                                     variant_image_count += 1
-                                    print(f"Successfully added variant image for SKU: {variant_sku} ({variant_image_count}/{len(variant_images_map)})")
+                                    if variant_image_count <= 3 or variant_image_count % 10 == 0:
+                                        print(f"✅ Variant image {variant_image_count}/{len(variant_images_map)} added for SKU: {variant_sku}")
                             time.sleep(0.15)
                         except Exception as e:
-                            print(f"Warning: Could not add variant image for {variant_sku}: {e}")
+                            print(f"❌ Error adding variant image for {variant_sku}: {e}")
+                            import traceback
+                            print(f"   Traceback: {traceback.format_exc()[:200]}")
                     else:
-                        print(f"Warning: Could not find variant with SKU {variant_sku} for image mapping")
-                print(f"Variant images complete: {variant_image_count}/{len(variant_images_map)} variant images added")
+                        print(f"⚠️ Warning: Could not find variant with SKU {variant_sku} in created variants list for image mapping")
+                        print(f"   Available variant SKUs: {[v.get('sku') for v in variants_list[:5]]}...")
+                print(f"📸 Variant images complete: {variant_image_count}/{len(variant_images_map)} variant images added")
             else:
-                print(f"Warning: No variant images to add (variant_images_map is empty or None)")
+                print(f"⚠️ Warning: No variant images to add (variant_images_map is empty or None)")
+                print(f"   Variants in product_data: {len(product_data.get('variants', []))}")
+                if product_data.get('variants'):
+                    sample_variant = product_data['variants'][0]
+                    print(f"   Sample variant keys: {list(sample_variant.keys())}")
+                    print(f"   Sample variant has 'image': {'image' in sample_variant}")
             
             # Step 7: Add product-level metafields
             if product_data.get('metafields'):
