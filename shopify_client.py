@@ -711,14 +711,19 @@ class ShopifyClient:
                             print(f"DEBUG: Creating variant {idx+1}/{len(unique_variants)} - SKU: {variant_sku}")
                             print(f"DEBUG: Variant payload: {variant_payload}")
                         
+                        # CRITICAL FIX: Use correct GraphQL mutation structure with input wrapper
+                        variant_input = {
+                            'productId': product_gid,
+                            **variant_payload
+                        }
+                        
                         variant_response = requests.post(
                             self.graphql_url,
                             headers=self.headers,
                             json={
                                 'query': variant_mutation,
                                 'variables': {
-                                    'productId': product_gid,
-                                    'variant': variant_payload
+                                    'input': variant_input
                                 }
                             },
                             timeout=30
@@ -823,8 +828,8 @@ class ShopifyClient:
                         continue
                     
                     image_mutation = """
-                    mutation productImageCreate($productId: ID!, $image: ImageInput!) {
-                        productImageCreate(productId: $productId, image: $image) {
+                    mutation productImageCreate($input: ImageInput!) {
+                        productImageCreate(input: $input) {
                             image {
                                 id
                                 src
@@ -837,7 +842,11 @@ class ShopifyClient:
                     }
                     """
                     
-                    image_input = {'src': img_url.strip()}
+                    # CRITICAL FIX: Use correct GraphQL mutation structure with input wrapper
+                    image_input = {
+                        'productId': product_gid,
+                        'src': img_url.strip()
+                    }
                     
                     try:
                         image_response = requests.post(
@@ -846,8 +855,7 @@ class ShopifyClient:
                             json={
                                 'query': image_mutation,
                                 'variables': {
-                                    'productId': product_gid,
-                                    'image': image_input
+                                    'input': image_input
                                 }
                             },
                             timeout=30
