@@ -1856,21 +1856,9 @@ class ShopifyClient:
                             print(f"[update] Exception updating variant {variant_sku}: {e}")
                             failed_count += 1
                     else:
-                        # CRITICAL FIX: Use correct mutation format for Shopify GraphQL API 2025-10
-                        # productVariantCreate takes only $input: ProductVariantInput!
-                        # productId must be INSIDE ProductVariantInput, not as separate parameter
-                        variant_create_mutation = """
-                        mutation productVariantCreate($input: ProductVariantInput!) {
-                            productVariantCreate(input: $input) {
-                                productVariant { id sku }
-                                userErrors { field message }
-                            }
-                        }
-                        """
-
-                        # CRITICAL FIX: productId must be INSIDE ProductVariantInput
-                        variant_input = {
-                            'productId': product_gid,  # productId goes INSIDE the input
+                        # CRITICAL FIX: productVariantCreate is deprecated, use productVariantsBulkCreate
+                        # For single variant creation during update, we still use bulk but with one variant
+                        variant_payload = {
                             'price': str(variant_data.get('price', '0')),
                             'sku': variant_sku if variant_sku else None,
                             'barcode': variant_data.get('barcode', '') or None,
@@ -1879,26 +1867,42 @@ class ShopifyClient:
                         }
 
                         if new_selected_options:
-                            variant_input['selectedOptions'] = new_selected_options
+                            variant_payload['selectedOptions'] = new_selected_options
                         else:
-                            variant_input['selectedOptions'] = [{'name': 'Title', 'value': variant_sku if variant_sku else f"Variant-{created_count+1}"}]
+                            variant_payload['selectedOptions'] = [{'name': 'Title', 'value': variant_sku if variant_sku else f"Variant-{created_count+1}"}]
 
                         if location_id and variant_data.get('inventory_quantity') is not None:
-                            variant_input['inventoryQuantities'] = [{
+                            variant_payload['inventoryQuantities'] = [{
                                 'availableQuantity': variant_data.get('inventory_quantity', 0) or 0,
                                 'locationId': location_id
                             }]
 
                         if variant_data.get('inventory_management') is None:
-                            variant_input['inventoryPolicy'] = 'CONTINUE'
+                            variant_payload['inventoryPolicy'] = 'CONTINUE'
                         else:
-                            variant_input['inventoryPolicy'] = 'DENY'
+                            variant_payload['inventoryPolicy'] = 'DENY'
+
+                        # Use productVariantsBulkCreate (even for single variant)
+                        variant_bulk_mutation = """
+                        mutation productVariantsBulkCreate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+                            productVariantsBulkCreate(productId: $productId, variants: $variants) {
+                                productVariants { id sku }
+                                userErrors { field message }
+                            }
+                        }
+                        """
 
                         try:
                             create_response = requests.post(
                                 self.graphql_url,
                                 headers=self.headers,
-                                json={'query': variant_create_mutation, 'variables': {'input': variant_input}},  # Use 'input' not 'productId' and 'variant'
+                                json={
+                                    'query': variant_bulk_mutation,
+                                    'variables': {
+                                        'productId': product_gid,
+                                        'variants': [variant_payload]  # Single variant in array
+                                    }
+                                },
                                 timeout=30
                             )
                             create_response.raise_for_status()
@@ -1908,16 +1912,22 @@ class ShopifyClient:
                                 print(f"[update] Error creating variant {variant_sku}: {create_result['errors']}")
                                 failed_count += 1
                             else:
-                                user_errors = create_result.get('data', {}).get('productVariantCreate', {}).get('userErrors', [])
+                                bulk_create = create_result.get('data', {}).get('productVariantsBulkCreate', {})
+                                user_errors = bulk_create.get('userErrors', [])
                                 if user_errors:
                                     print(f"[update] User errors creating variant {variant_sku}: {user_errors}")
                                     failed_count += 1
                                 else:
-                                    created_count += 1
-                                    variant_node = create_result.get('data', {}).get('productVariantCreate', {}).get('productVariant', {})
-                                    variant_records.append({'gid': variant_node.get('id'), 'sku': variant_node.get('sku', variant_sku)})
-                                    if created_count <= 3 or created_count % 10 == 0:
-                                        print(f"[update] Variant {variant_sku} created ({created_count} new variants)")
+                                    created_variants = bulk_create.get('productVariants', [])
+                                    if created_variants:
+                                        created_count += 1
+                                        variant_node = created_variants[0]
+                                        variant_records.append({'gid': variant_node.get('id'), 'sku': variant_node.get('sku', variant_sku)})
+                                        if created_count <= 3 or created_count % 10 == 0:
+                                            print(f"[update] Variant {variant_sku} created ({created_count} new variants)")
+                                    else:
+                                        print(f"[update] Variant {variant_sku} creation succeeded but no variant returned")
+                                        failed_count += 1
 
                             time.sleep(0.1)
                         except Exception as e:
