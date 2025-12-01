@@ -1752,16 +1752,18 @@ class ShopifyClient:
                     print(f"   Skipping variant without options: {sku}")
                     continue
                 
+                # Build variant payload
+                # CRITICAL: REST API uses 'lb', 'oz', 'kg', 'g' (lowercase) not 'POUNDS'
+                # CRITICAL: Only use option1 and option2 (Color, Size) - option3 causes "unknown option" error
                 variant_payload = {
                     'variant': {
-                        'option1': option1 or None,
-                        'option2': option2 or None,
-                        'option3': option3 or None,
+                        'option1': option1 if option1 else 'Default',
+                        'option2': option2 if option2 else 'One Size',
                         'price': str(v_data.get('price', '0')),
                         'sku': sku,
                         'barcode': v_data.get('barcode', '') or None,
                         'weight': float(v_data.get('weight', 0) or 0),
-                        'weight_unit': v_data.get('weight_unit', 'lb'),
+                        'weight_unit': 'lb',  # REST API requires lowercase
                         'inventory_management': 'shopify',
                         'inventory_policy': 'deny'
                     }
@@ -1801,7 +1803,7 @@ class ShopifyClient:
                     else:
                         print(f"   ⚠️ Variant {idx+1} ({sku}): No ID returned")
                     
-                    time.sleep(0.15)  # Rate limiting
+                    time.sleep(0.6)  # Rate limiting: max 2 calls/second = 0.5s minimum, using 0.6s for safety
                     
                 except Exception as e:
                     print(f"   ❌ Exception variant {idx+1} ({sku}): {str(e)[:150]}")
