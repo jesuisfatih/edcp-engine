@@ -5,6 +5,7 @@ from ss_api_client import SSActivewearClient
 from database import get_db
 import json
 from typing import List, Dict, Optional
+import time
 
 
 class DataFetcher:
@@ -33,6 +34,7 @@ class DataFetcher:
         # Enrich with style details
         style_ids = sorted({p.get("styleID") for p in products if p.get("styleID")})
         style_lookup = {}
+        category_lookup = {}
         if style_ids:
             try:
                 styleid_param = ",".join([str(sid) for sid in style_ids])
@@ -44,6 +46,16 @@ class DataFetcher:
                 print(f"[fetch] Enriched styles fetched: {len(style_lookup)}")
             except Exception as e:
                 print(f"[fetch] Warning: could not fetch style details: {e}")
+        # Category lookup for human-friendly tags/collections
+        try:
+            categories = self.ss_client.get_categories()
+            for c in categories or []:
+                cid = c.get("categoryID")
+                if cid is not None:
+                    category_lookup[str(cid)] = c.get("name", "").strip()
+            print(f"[fetch] Category lookup loaded: {len(category_lookup)}")
+        except Exception as e:
+            print(f"[fetch] Warning: could not fetch categories: {e}")
 
         def normalize_image(path: Optional[str]) -> Optional[str]:
             """Build full URL and prefer large size; return None if empty."""
@@ -93,6 +105,21 @@ class DataFetcher:
                     enriched["colorSideImage"] = side
                     enriched["colorBackImage"] = back
                     enriched["styleImage"] = normalize_image(enriched.get("styleImage"))
+
+                    # Category names list for tags/collections
+                    cat_names = []
+                    cats_raw = enriched.get("categories")
+                    if cats_raw:
+                        if isinstance(cats_raw, list):
+                            cat_ids = [str(c).strip() for c in cats_raw if str(c).strip()]
+                        else:
+                            cat_ids = [c.strip() for c in str(cats_raw).split(",") if c.strip()]
+                        for cid in cat_ids:
+                            name = category_lookup.get(str(cid))
+                            if name:
+                                cat_names.append(name)
+                    if cat_names:
+                        enriched["categoryNames"] = cat_names
 
                     # Store full product data as JSON
                     product_json = json.dumps(enriched)

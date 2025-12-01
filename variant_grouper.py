@@ -110,6 +110,15 @@ class VariantGrouper:
                             tags.append(base_product['colorFamily'])
                         if base_product.get('baseCategory'):
                             tags.append(base_product['baseCategory'])
+                        # Add category names if available
+                        if base_product.get('categoryNames'):
+                            try:
+                                for cname in base_product['categoryNames']:
+                                    if cname and cname not in tags:
+                                        tags.append(cname)
+                            except Exception:
+                                pass
+                        # Also include raw category IDs as tags if present
                         # Add category IDs as tags if available
                         if base_product.get('categories'):
                             try:
