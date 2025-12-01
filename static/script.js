@@ -442,7 +442,11 @@ async function startSync() {
             document.getElementById('stopBtn').disabled = false;
             document.getElementById('progressSection').style.display = 'block';
             document.getElementById('currentProductCard').style.display = 'block';
+            document.getElementById('transferConsoleCard').style.display = 'block';
+            document.getElementById('createdProductsCard').style.display = 'none'; // Hide until sync completes
+            clearConsole();
             startCurrentProductPolling();
+            startStatusPolling();
             showSection('sync-active');
         } else {
             showAlert('Başlatılamadı: ' + result.message, 'danger');
@@ -1272,6 +1276,16 @@ function updateSyncStatus(status) {
     // Display errors
     if (status.errors && status.errors.length > 0) {
         displayErrors(status.errors);
+    }
+    
+    // Display logs in console
+    if (status.logs && status.logs.length > 0) {
+        updateConsoleLogs(status.logs);
+    }
+    
+    // Display created products with links when sync completes
+    if (status.status === 'completed' && status.created_products && status.created_products.length > 0) {
+        displayCreatedProducts(status.created_products);
     }
 }
 

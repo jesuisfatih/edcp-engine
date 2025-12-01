@@ -229,7 +229,9 @@ def sync_status():
         'errors': sync_manager.errors[-10:],  # Last 10 errors
         'current_product': current_product_info,
         'step': getattr(sync_manager, 'step', None),
-        'step_progress': getattr(sync_manager, 'step_progress', None)
+        'step_progress': getattr(sync_manager, 'step_progress', None),
+        'logs': getattr(sync_manager, 'logs', [])[-100:],  # Last 100 logs
+        'created_products': getattr(sync_manager, 'created_products', [])  # All created products with links
     })
 
 @app.route('/api/sync/stop', methods=['POST'])

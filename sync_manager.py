@@ -35,6 +35,26 @@ class SyncManager:
         self._stop_flag = False
         self.current_product = None
         self.current_index = 0
+        # Log system for detailed operation tracking
+        self.logs = []  # List of log entries: {'timestamp': str, 'level': str, 'message': str, 'data': dict}
+        self.created_products = []  # List of created products with Shopify links: {'title': str, 'shopify_id': int, 'shopify_url': str, 'handle': str}
+        # Extract shop domain for building product URLs
+        self.shop_domain = shopify_client.shop_domain.replace('https://', '').replace('http://', '').split('/')[0]
+    
+    def _add_log(self, level: str, message: str, data: dict = None):
+        """Add a log entry with timestamp"""
+        log_entry = {
+            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'level': level,  # 'info', 'success', 'warning', 'error', 'step'
+            'message': message,
+            'data': data or {}
+        }
+        self.logs.append(log_entry)
+        # Keep only last 1000 logs to prevent memory issues
+        if len(self.logs) > 1000:
+            self.logs = self.logs[-1000:]
+        # Also print to console for debugging
+        print(f"[{log_entry['timestamp']}] [{level.upper()}] {message}")
     
     def stop(self):
         """Stop synchronization"""
@@ -53,6 +73,10 @@ class SyncManager:
         self.step_progress = 0
         self.step = None
         self.step_progress = 0
+        # Clear logs and created products for new sync
+        self.logs = []
+        self.created_products = []
+        self._add_log('step', '🚀 Aktarım başlatılıyor...', {'step': 'init'})
         
         try:
             # Inventory-only mode: just update qty on Shopify using cached products
@@ -96,6 +120,7 @@ class SyncManager:
             self.progress = 5
             self.step = 'fetch'
             self.step_progress = 5
+            self._add_log('step', '📥 S&S Activewear API\'den ürünler çekiliyor...', {'step': 'fetch'})
             
             try:
                 data_fetcher = DataFetcher(self.ss_client, self.sync_id)
@@ -152,6 +177,7 @@ class SyncManager:
             self.progress = 25
             self.step = 'group'
             self.step_progress = 25
+            self._add_log('step', '📦 Ürünler styleID\'ye göre gruplanıyor...', {'step': 'group'})
             
             try:
                 grouper = VariantGrouper(self.sync_id, self.sync_options)
@@ -179,6 +205,7 @@ class SyncManager:
             self.progress = 35
             self.step = 'sync'
             self.step_progress = 35
+            self._add_log('step', '🔄 Shopify\'a aktarım başlatılıyor...', {'step': 'sync'})
             
             product_groups = grouper.get_product_groups(status='pending')
             total_groups = len(product_groups)
@@ -209,6 +236,12 @@ class SyncManager:
                 product_name = group.get('title', 'Unknown Product')
                 
                 self.message = f'Processing {processed_groups}/{total_groups}: {product_name}'
+                self._add_log('info', f'📋 İşleniyor ({processed_groups}/{total_groups}): {product_name}', {
+                    'group_id': group_id,
+                    'product_name': product_name,
+                    'progress': processed_groups,
+                    'total': total_groups
+                })
                 
                 try:
                     # Get variants and images for this group
@@ -265,6 +298,10 @@ class SyncManager:
             self.status = 'completed'
             self.progress = 100
             self.message = f'Sync completed: {self.stats["created"]} created, {self.stats["updated"]} updated, {self.stats["errors"]} errors'
+            self._add_log('success', f'🎉 Aktarım tamamlandı! {self.stats["created"]} oluşturuldu, {self.stats["updated"]} güncellendi, {self.stats["errors"]} hata', {
+                'stats': self.stats,
+                'created_products_count': len(self.created_products)
+            })
             # Save final state
             save_sync_state(self.sync_id, self.status, 100, total_groups, total_groups, self.stats)
             # Save sync history
@@ -894,11 +931,19 @@ class SyncManager:
         
         # Remove the duplicate product_data build below since we already built it above
         
-        if existing_product:
+                if existing_product:
             # Update existing product with all variants
             if self.sync_options.get('update_existing', True):
+                self._add_log('info', f'🔄 Mevcut ürün güncelleniyor: {product_title}', {
+                    'product_id': existing_product['id'],
+                    'variants_count': len(product_data.get('variants', []))
+                })
                 self.shopify_client.update_product(existing_product['id'], product_data)
                 self.stats['updated'] += 1
+                self._add_log('success', f'✅ Ürün güncellendi: {product_title}', {
+                    'product_id': existing_product['id'],
+                    'shopify_url': f"https://{self.shop_domain}/admin/products/{existing_product['id']}"
+                })
                 try:
                     refreshed = self.shopify_client.get_product_by_title(product_title)
                     if refreshed:
@@ -939,6 +984,28 @@ class SyncManager:
                     else:
                         # New product created
                         self.stats['created'] += 1
+                        product_id = result.get('id')
+                        product_handle = result.get('handle', '')
+                        shopify_url = f"https://{self.shop_domain}/admin/products/{product_id}"
+                        product_url = f"https://{self.shop_domain}/products/{product_handle}" if product_handle else shopify_url
+                        
+                        self._add_log('success', f'✅ Yeni ürün oluşturuldu: {product_title}', {
+                            'product_id': product_id,
+                            'variants_count': len(result.get('variants', [])),
+                            'shopify_url': shopify_url,
+                            'product_url': product_url
+                        })
+                        
+                        # Store created product with link
+                        self.created_products.append({
+                            'title': product_title,
+                            'shopify_id': product_id,
+                            'shopify_url': shopify_url,
+                            'product_url': product_url,
+                            'handle': product_handle,
+                            'variants_count': len(result.get('variants', []))
+                        })
+                        
                         try:
                             refreshed = self.shopify_client.get_product_by_title(product_title)
                             if refreshed:

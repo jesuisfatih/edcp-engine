@@ -144,4 +144,96 @@ body {
     50% { transform: scale(1.1); }
 }
 
+/* Terminal/Console Styles */
+.console-output {
+    background: #1e1e1e;
+    color: #d4d4d4;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 13px;
+    padding: 15px;
+    max-height: 500px;
+    overflow-y: auto;
+    border-radius: 0 0 0.25rem 0.25rem;
+    line-height: 1.6;
+}
+
+.console-line {
+    margin-bottom: 5px;
+    word-wrap: break-word;
+    animation: fadeIn 0.3s ease-in;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.console-prompt {
+    color: #4ec9b0;
+    margin-right: 8px;
+    font-weight: bold;
+}
+
+.console-text {
+    color: #d4d4d4;
+}
+
+.console-line.log-info .console-text {
+    color: #569cd6;
+}
+
+.console-line.log-success .console-text {
+    color: #4ec9b0;
+}
+
+.console-line.log-warning .console-text {
+    color: #dcdcaa;
+}
+
+.console-line.log-error .console-text {
+    color: #f48771;
+}
+
+.console-line.log-step .console-text {
+    color: #c586c0;
+    font-weight: 600;
+}
+
+.console-output::-webkit-scrollbar {
+    width: 8px;
+}
+
+.console-output::-webkit-scrollbar-track {
+    background: #252526;
+}
+
+.console-output::-webkit-scrollbar-thumb {
+    background: #424242;
+    border-radius: 4px;
+}
+
+.console-output::-webkit-scrollbar-thumb:hover {
+    background: #4e4e4e;
+}
+
+/* Created Products Links */
+#createdProductsList {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.product-link-item {
+    padding: 10px;
+    border-bottom: 1px solid #e0e0e0;
+    transition: background 0.2s;
+}
+
+.product-link-item:hover {
+    background: #f8f9fa;
+}
+
+.product-link-item:last-child {
+    border-bottom: none;
+}
+
 
