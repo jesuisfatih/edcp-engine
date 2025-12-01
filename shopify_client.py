@@ -952,35 +952,12 @@ class ShopifyClient:
                 created_count = len(variants_list)
                 failed_count = len(unique_variants) - created_count
                 print(f"📊 Total variants created: {created_count}/{len(unique_variants)} (failed: {failed_count})")
-                    
-                except requests.exceptions.HTTPError as e:
-                    error_msg = f"HTTP Error creating variants: {e}"
-                    if hasattr(e, 'response') and e.response is not None:
-                        try:
-                            error_body = e.response.json()
-                            error_msg += f" | Response: {error_body}"
-                        except:
-                            error_msg += f" | Response text: {e.response.text[:500]}"
-                    print(f"❌ {error_msg}")
-                    created_count = 0
-                    failed_count = len(unique_variants)
-                except Exception as e:
-                    error_msg = f"Exception creating variants: {type(e).__name__}: {str(e)}"
-                    print(f"❌ {error_msg}")
-                    import traceback
-                    print(f"   Traceback: {traceback.format_exc()[:500]}")
-                    created_count = 0
-                    failed_count = len(unique_variants)
                 
-                # CRITICAL: If no variants were created, log warning but DON'T fail
-                # Instead, continue to add images and metafields
+                # Log warning if no variants created, but DON'T fail
                 if created_count == 0:
                     print(f"⚠️ WARNING: No variants were created for product '{product.get('title')}'")
-                    print(f"   Product ID {product_id} exists but has no variants")
-                    print(f"   Attempted to create {len(unique_variants)} variants")
                     print(f"   This might be OK if variants already existed")
                     print(f"   Continuing to add images and metafields...")
-                    # DON'T raise exception - continue with images and metafields
             else:
                 raise Exception("CRITICAL: No variants to create. Product cannot exist without variants.")
             
