@@ -729,8 +729,9 @@ class ShopifyClient:
             }
             
             # Add product options if we have any
+            # CRITICAL: Use 'productOptions' not 'options' - Shopify 2024-10+ schema requires productOptions
             if product_options:
-                product_input['options'] = product_options
+                product_input['productOptions'] = product_options
                 print(f"✅ Product will be created with {len(product_options)} option(s): {[opt['name'] for opt in product_options]}")
             
             response = requests.post(
