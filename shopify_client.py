@@ -641,17 +641,22 @@ class ShopifyClient:
                 variant_metafields_map = {}
                 
                 for v in unique_variants:
-                    image_url = v.pop('_image', None)
-                    metafields = v.pop('_metafields', {})
+                    # CRITICAL FIX: Check both 'image' and '_image' keys (sync_manager uses 'image')
+                    image_url = v.pop('image', None) or v.pop('_image', None)
+                    metafields = v.pop('metafields', {}) or v.pop('_metafields', {})
                     variant_sku = v.get('sku', '')
                     if image_url and variant_sku:
                         variant_images_map[variant_sku] = image_url
+                        print(f"DEBUG: Mapped variant image for SKU {variant_sku}: {image_url[:50]}...")
                     if metafields and variant_sku:
                         variant_metafields_map[variant_sku] = metafields
                 
+                print(f"DEBUG: Variant images map size: {len(variant_images_map)}")
+                print(f"DEBUG: Variant metafields map size: {len(variant_metafields_map)}")
+                
                 variant_mutation = """
-                mutation productVariantCreate($productId: ID!, $variant: ProductVariantInput!) {
-                    productVariantCreate(productId: $productId, variant: $variant) {
+                mutation productVariantCreate($input: ProductVariantInput!) {
+                    productVariantCreate(input: $input) {
                         productVariant {
                             id
                             sku
