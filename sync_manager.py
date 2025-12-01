@@ -931,7 +931,7 @@ class SyncManager:
         
         # Remove the duplicate product_data build below since we already built it above
         
-                if existing_product:
+        if existing_product:
             # Update existing product with all variants
             if self.sync_options.get('update_existing', True):
                 self._add_log('info', f'🔄 Mevcut ürün güncelleniyor: {product_title}', {
