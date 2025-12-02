@@ -287,3 +287,12 @@ window.displayPreviewWithLocations = displayPreviewWithLocations;
 
 console.log('✅ Warehouse UI functions exported to window');
 
+// Attach event listeners after DOM is ready
+document.addEventListener('DOMContentLoaded', function() {
+    const previewBtn = document.getElementById('loadPreviewBtn');
+    if (previewBtn) {
+        previewBtn.addEventListener('click', loadPreviewWithLocations);
+        console.log('✅ Preview button listener attached');
+    }
+});
+
