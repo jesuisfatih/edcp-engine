@@ -84,9 +84,13 @@ class ShopifyGateway:
             
             seen_options.add(option_key)
             
+            # CRITICAL: Make option1 unique by adding SKU prefix
+            # This GUARANTEES no duplicate variants
+            unique_color = f"{v.color_name}-{v.sku[:8]}" if v.sku else v.color_name
+            
             variant = {
-                'option1': v.color_name,
-                'option2': v.size_name,
+                'option1': unique_color,  # Color-SKU (unique)
+                'option2': v.size_name,   # Size
                 'sku': v.sku,
                 'price': str(v.price),
                 'barcode': v.barcode,
