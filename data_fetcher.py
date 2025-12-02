@@ -197,6 +197,11 @@ class DataFetcher:
 
     def _get_products_to_sync(self, filter_options: Dict) -> List[Dict]:
         """
+        Fetch products from S&S API with warehouse filtering
+        
+        CRITICAL: Warehouse filter MUST be applied to prevent duplicate variants
+        """
+        """
         Get products from S&S API with filtering
         Uses the same logic as SyncManager._get_products_to_sync for consistency
         """
