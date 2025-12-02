@@ -376,3 +376,274 @@ def get_sync_state(sync_id: str):
             }
         return None
 
+
+# ==================== PRODUCT SEARCH CACHE (FTS5) ====================
+
+def init_product_search_cache():
+    """Initialize FTS5 virtual table for fast product search"""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        
+        # Main products table for search
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS product_search_cache (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                style_id TEXT UNIQUE NOT NULL,
+                style_name TEXT,
+                brand_name TEXT,
+                title TEXT,
+                base_price REAL,
+                image_url TEXT,
+                variant_count INTEGER DEFAULT 0,
+                color_count INTEGER DEFAULT 0,
+                size_count INTEGER DEFAULT 0,
+                colors TEXT,
+                sizes TEXT,
+                product_data TEXT,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # FTS5 virtual table for fast full-text search
+        cursor.execute('''
+            CREATE VIRTUAL TABLE IF NOT EXISTS product_search_fts USING fts5(
+                style_id,
+                style_name,
+                brand_name,
+                title,
+                colors,
+                content='product_search_cache',
+                content_rowid='id'
+            )
+        ''')
+        
+        # Triggers to keep FTS in sync
+        cursor.execute('''
+            CREATE TRIGGER IF NOT EXISTS product_search_ai AFTER INSERT ON product_search_cache BEGIN
+                INSERT INTO product_search_fts(rowid, style_id, style_name, brand_name, title, colors)
+                VALUES (new.id, new.style_id, new.style_name, new.brand_name, new.title, new.colors);
+            END
+        ''')
+        
+        cursor.execute('''
+            CREATE TRIGGER IF NOT EXISTS product_search_ad AFTER DELETE ON product_search_cache BEGIN
+                INSERT INTO product_search_fts(product_search_fts, rowid, style_id, style_name, brand_name, title, colors)
+                VALUES ('delete', old.id, old.style_id, old.style_name, old.brand_name, old.title, old.colors);
+            END
+        ''')
+        
+        cursor.execute('''
+            CREATE TRIGGER IF NOT EXISTS product_search_au AFTER UPDATE ON product_search_cache BEGIN
+                INSERT INTO product_search_fts(product_search_fts, rowid, style_id, style_name, brand_name, title, colors)
+                VALUES ('delete', old.id, old.style_id, old.style_name, old.brand_name, old.title, old.colors);
+                INSERT INTO product_search_fts(rowid, style_id, style_name, brand_name, title, colors)
+                VALUES (new.id, new.style_id, new.style_name, new.brand_name, new.title, new.colors);
+            END
+        ''')
+        
+        conn.commit()
+        print("Product search cache initialized")
+
+
+def get_search_cache_count():
+    """Get number of products in search cache"""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute('SELECT COUNT(*) FROM product_search_cache')
+            return cursor.fetchone()[0]
+        except:
+            return 0
+
+
+def get_search_cache_last_update():
+    """Get last update time of search cache"""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute('SELECT MAX(updated_at) FROM product_search_cache')
+            result = cursor.fetchone()[0]
+            return result
+        except:
+            return None
+
+
+def populate_search_cache(products: list):
+    """Populate search cache from S&S API products (grouped by style)"""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        
+        # Group products by style
+        styles_dict = {}
+        for product in products:
+            style_id = str(product.get('styleID') or product.get('style', 'unknown'))
+            
+            if style_id not in styles_dict:
+                styles_dict[style_id] = {
+                    'style_id': style_id,
+                    'style_name': product.get('styleName', ''),
+                    'brand_name': product.get('brandName', ''),
+                    'title': product.get('title', product.get('styleName', '')),
+                    'base_price': product.get('piecePrice') or product.get('customerPrice') or product.get('casePrice', 0),
+                    'image_url': None,
+                    'variants': [],
+                    'colors': set(),
+                    'sizes': set()
+                }
+                
+                # Get primary image
+                for img_field in ['colorFrontImage', 'colorSideImage', 'colorBackImage', 'styleImage']:
+                    img_url = product.get(img_field)
+                    if img_url:
+                        if not img_url.startswith('http'):
+                            img_url = f"https://www.ssactivewear.com/{img_url.lstrip('/')}"
+                        styles_dict[style_id]['image_url'] = img_url
+                        break
+            
+            styles_dict[style_id]['variants'].append(product)
+            if product.get('colorName'):
+                styles_dict[style_id]['colors'].add(product['colorName'])
+            if product.get('sizeName'):
+                styles_dict[style_id]['sizes'].add(product['sizeName'])
+        
+        # Insert into cache
+        inserted = 0
+        for style_id, data in styles_dict.items():
+            try:
+                colors_str = ', '.join(sorted(data['colors']))
+                sizes_str = ', '.join(sorted(data['sizes']))
+                
+                cursor.execute('''
+                    INSERT OR REPLACE INTO product_search_cache 
+                    (style_id, style_name, brand_name, title, base_price, image_url, 
+                     variant_count, color_count, size_count, colors, sizes, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ''', (
+                    style_id,
+                    data['style_name'],
+                    data['brand_name'],
+                    data['title'],
+                    data['base_price'],
+                    data['image_url'],
+                    len(data['variants']),
+                    len(data['colors']),
+                    len(data['sizes']),
+                    colors_str,
+                    sizes_str
+                ))
+                inserted += 1
+            except Exception as e:
+                print(f"Error inserting style {style_id}: {e}")
+        
+        conn.commit()
+        return inserted
+
+
+def search_products_fts(query: str, limit: int = 50, offset: int = 0):
+    """Fast full-text search using FTS5"""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        
+        # Escape special FTS characters and prepare query
+        clean_query = query.replace('"', '').replace("'", "").strip()
+        
+        if not clean_query:
+            return [], 0
+        
+        # Use FTS5 MATCH with prefix search
+        fts_query = f'"{clean_query}"* OR {clean_query}*'
+        
+        try:
+            # Count total matches
+            cursor.execute('''
+                SELECT COUNT(*) FROM product_search_cache c
+                WHERE c.id IN (
+                    SELECT rowid FROM product_search_fts WHERE product_search_fts MATCH ?
+                )
+            ''', (fts_query,))
+            total = cursor.fetchone()[0]
+            
+            # Get matching products
+            cursor.execute('''
+                SELECT c.*, bm25(product_search_fts) as rank
+                FROM product_search_cache c
+                JOIN product_search_fts f ON c.id = f.rowid
+                WHERE product_search_fts MATCH ?
+                ORDER BY rank
+                LIMIT ? OFFSET ?
+            ''', (fts_query, limit, offset))
+            
+            results = []
+            for row in cursor.fetchall():
+                results.append({
+                    'styleID': row['style_id'],
+                    'styleName': row['style_name'],
+                    'brandName': row['brand_name'],
+                    'title': row['title'],
+                    'basePrice': row['base_price'],
+                    'image': row['image_url'],
+                    'variantCount': row['variant_count'],
+                    'colorCount': row['color_count'],
+                    'sizeCount': row['size_count']
+                })
+            
+            return results, total
+            
+        except Exception as e:
+            print(f"FTS search error: {e}")
+            # Fallback to LIKE search if FTS fails
+            return search_products_like(query, limit, offset)
+
+
+def search_products_like(query: str, limit: int = 50, offset: int = 0):
+    """Fallback LIKE search (slower but always works)"""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        
+        search_pattern = f'%{query}%'
+        
+        # Count total
+        cursor.execute('''
+            SELECT COUNT(*) FROM product_search_cache 
+            WHERE style_id LIKE ? OR style_name LIKE ? OR brand_name LIKE ? 
+                  OR title LIKE ? OR colors LIKE ?
+        ''', (search_pattern,) * 5)
+        total = cursor.fetchone()[0]
+        
+        # Get results
+        cursor.execute('''
+            SELECT * FROM product_search_cache 
+            WHERE style_id LIKE ? OR style_name LIKE ? OR brand_name LIKE ? 
+                  OR title LIKE ? OR colors LIKE ?
+            ORDER BY 
+                CASE 
+                    WHEN style_name LIKE ? THEN 1
+                    WHEN title LIKE ? THEN 2
+                    ELSE 3
+                END
+            LIMIT ? OFFSET ?
+        ''', (search_pattern,) * 5 + (f'{query}%', f'{query}%', limit, offset))
+        
+        results = []
+        for row in cursor.fetchall():
+            results.append({
+                'styleID': row['style_id'],
+                'styleName': row['style_name'],
+                'brandName': row['brand_name'],
+                'title': row['title'],
+                'basePrice': row['base_price'],
+                'image': row['image_url'],
+                'variantCount': row['variant_count'],
+                'colorCount': row['color_count'],
+                'sizeCount': row['size_count']
+            })
+        
+        return results, total
+
+
+def clear_search_cache():
+    """Clear the product search cache"""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM product_search_cache')
+        conn.commit()

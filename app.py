@@ -5,7 +5,10 @@ from ss_api_client import SSActivewearClient
 from shopify_client import ShopifyClient
 from sync_manager import SyncManager
 from scheduler import scheduler
-from database import init_database, save_config, get_config, get_all_config, save_sync_history, get_last_sync_id, get_sync_products
+from database import (init_database, save_config, get_config, get_all_config, save_sync_history, 
+                      get_last_sync_id, get_sync_products, init_product_search_cache, 
+                      get_search_cache_count, populate_search_cache, search_products_fts,
+                      get_search_cache_last_update, clear_search_cache)
 import threading
 import json
 import requests
@@ -18,6 +21,7 @@ app.secret_key = os.getenv('SECRET_KEY', 'your-secret-key-change-this')
 # Initialize database on startup
 try:
     init_database()
+    init_product_search_cache()
     print("Database initialized successfully")
 except Exception as e:
     print(f"Database initialization error: {e}")
@@ -917,7 +921,7 @@ def delete_all_shopify_data():
 
 @app.route('/api/search-products', methods=['POST'])
 def search_products():
-    """Search products by name, SKU, or style number"""
+    """Fast product search using FTS5 cache"""
     try:
         data = request.json or {}
         query = data.get('query', '').strip()
@@ -930,6 +934,50 @@ def search_products():
                 'message': 'Search query must be at least 2 characters'
             }), 400
         
+        # Search in FTS cache (milliseconds!)
+        results, total = search_products_fts(query, limit, offset)
+        
+        return jsonify({
+            'status': 'success',
+            'total': total,
+            'results': results,
+            'hasMore': offset + limit < total,
+            'cached': True
+        })
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+
+@app.route('/api/search-cache/status', methods=['GET'])
+def search_cache_status():
+    """Get search cache status"""
+    try:
+        count = get_search_cache_count()
+        last_update = get_search_cache_last_update()
+        
+        return jsonify({
+            'status': 'success',
+            'count': count,
+            'lastUpdate': last_update,
+            'isEmpty': count == 0
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+
+@app.route('/api/search-cache/rebuild', methods=['POST'])
+def rebuild_search_cache():
+    """Rebuild search cache from S&S API"""
+    try:
         # Get S&S API config
         ss_config = get_config('ss_config') or session.get('ss_config', {})
         if not ss_config.get('account_number') or not ss_config.get('api_key'):
@@ -943,99 +991,22 @@ def search_products():
             api_key=ss_config['api_key']
         )
         
-        # Search products
-        all_products = ss_client.get_products(limit=5000)
+        # Clear existing cache
+        clear_search_cache()
         
-        # Filter by search query (case insensitive)
-        query_lower = query.lower()
-        matching_products = []
+        # Fetch all products from API
+        print("Fetching products from S&S API for search cache...")
+        all_products = ss_client.get_products(limit=50000)
+        print(f"Fetched {len(all_products)} products")
         
-        for product in all_products:
-            # Search in multiple fields
-            searchable_fields = [
-                str(product.get('sku', '')),
-                str(product.get('styleName', '')),
-                str(product.get('brandName', '')),
-                str(product.get('styleID', '')),
-                str(product.get('title', '')),
-                str(product.get('colorName', '')),
-                str(product.get('style', ''))
-            ]
-            
-            if any(query_lower in field.lower() for field in searchable_fields):
-                matching_products.append(product)
-        
-        # Group by style for cleaner results
-        styles_dict = {}
-        for product in matching_products:
-            style_id = product.get('styleID') or product.get('style', 'unknown')
-            if style_id not in styles_dict:
-                styles_dict[style_id] = {
-                    'styleID': style_id,
-                    'styleName': product.get('styleName', ''),
-                    'brandName': product.get('brandName', ''),
-                    'title': product.get('title', product.get('styleName', '')),
-                    'basePrice': product.get('piecePrice') or product.get('customerPrice') or product.get('casePrice', 0),
-                    'image': None,
-                    'variants': [],
-                    'colors': set(),
-                    'sizes': set()
-                }
-                
-                # Get primary image
-                for img_field in ['colorFrontImage', 'colorSideImage', 'colorBackImage', 
-                                  'styleImage', 'brandImage']:
-                    img_url = product.get(img_field)
-                    if img_url:
-                        if not img_url.startswith('http'):
-                            img_url = f"https://www.ssactivewear.com/{img_url.lstrip('/')}"
-                        styles_dict[style_id]['image'] = img_url
-                        break
-            
-            # Add variant info
-            styles_dict[style_id]['variants'].append(product)
-            if product.get('colorName'):
-                styles_dict[style_id]['colors'].add(product['colorName'])
-            if product.get('sizeName'):
-                styles_dict[style_id]['sizes'].add(product['sizeName'])
-        
-        # Convert to list and sort
-        results = []
-        for style_id, style_data in styles_dict.items():
-            results.append({
-                'styleID': style_data['styleID'],
-                'styleName': style_data['styleName'],
-                'brandName': style_data['brandName'],
-                'title': style_data['title'],
-                'basePrice': style_data['basePrice'],
-                'image': style_data['image'],
-                'variantCount': len(style_data['variants']),
-                'colorCount': len(style_data['colors']),
-                'sizeCount': len(style_data['sizes'])
-            })
-        
-        # Sort by relevance (exact matches first)
-        def relevance_score(item):
-            score = 0
-            title = (item.get('title') or '').lower()
-            style_name = (item.get('styleName') or '').lower()
-            if query_lower == title or query_lower == style_name:
-                score += 100
-            elif title.startswith(query_lower) or style_name.startswith(query_lower):
-                score += 50
-            return -score
-        
-        results.sort(key=relevance_score)
-        
-        # Apply pagination
-        total = len(results)
-        paginated = results[offset:offset + limit]
+        # Populate cache
+        inserted = populate_search_cache(all_products)
+        print(f"Inserted {inserted} styles into search cache")
         
         return jsonify({
             'status': 'success',
-            'total': total,
-            'results': paginated,
-            'hasMore': offset + limit < total
+            'message': f'Cache rebuilt with {inserted} styles',
+            'count': inserted
         })
         
     except Exception as e:

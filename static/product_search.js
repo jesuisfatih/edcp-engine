@@ -1,6 +1,7 @@
 /**
  * Product Search & Preview Module
  * E-commerce style product search and detail view
+ * Uses FTS5 for millisecond search performance
  */
 
 (function() {
@@ -8,11 +9,90 @@
     let currentOffset = 0;
     let currentQuery = '';
     let isLoading = false;
+    let cacheReady = false;
     
     // Initialize on DOM ready
     document.addEventListener('DOMContentLoaded', function() {
         initProductSearch();
+        checkSearchCache();
     });
+    
+    async function checkSearchCache() {
+        try {
+            const response = await fetch('/api/search-cache/status');
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                if (data.isEmpty) {
+                    showCacheBuilding();
+                    await rebuildCache();
+                } else {
+                    cacheReady = true;
+                    updateCacheStatus(data.count, data.lastUpdate);
+                }
+            }
+        } catch (error) {
+            console.error('Error checking cache:', error);
+        }
+    }
+    
+    async function rebuildCache() {
+        try {
+            const response = await fetch('/api/search-cache/rebuild', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                cacheReady = true;
+                updateCacheStatus(data.count);
+                showInitialState();
+            } else {
+                showCacheError(data.message);
+            }
+        } catch (error) {
+            console.error('Error rebuilding cache:', error);
+            showCacheError('Cache rebuild failed');
+        }
+    }
+    
+    function showCacheBuilding() {
+        const initialState = document.getElementById('searchInitialState');
+        if (initialState) {
+            initialState.innerHTML = `
+                <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
+                    <span class="visually-hidden">Yükleniyor...</span>
+                </div>
+                <h4 class="text-muted">Ürün Kataloğu Hazırlanıyor...</h4>
+                <p class="text-muted">İlk kullanımda tüm ürünler indekslenecek (1 dakika sürebilir)</p>
+                <div class="progress mt-3" style="width: 300px; margin: 0 auto;">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" style="width: 100%"></div>
+                </div>
+            `;
+        }
+    }
+    
+    function showCacheError(message) {
+        const initialState = document.getElementById('searchInitialState');
+        if (initialState) {
+            initialState.innerHTML = `
+                <i class="fas fa-exclamation-triangle fa-3x text-danger mb-3"></i>
+                <h4 class="text-danger">Cache Hatası</h4>
+                <p class="text-muted">${message}</p>
+                <button class="btn btn-primary mt-2" onclick="location.reload()">
+                    <i class="fas fa-redo"></i> Tekrar Dene
+                </button>
+            `;
+        }
+    }
+    
+    function updateCacheStatus(count, lastUpdate) {
+        const countEl = document.getElementById('searchResultCount');
+        if (countEl && count) {
+            countEl.innerHTML = `<small class="text-success"><i class="fas fa-database"></i> ${count.toLocaleString()} ürün indexlendi</small>`;
+        }
+    }
     
     function initProductSearch() {
         const searchInput = document.getElementById('productSearchInput');
