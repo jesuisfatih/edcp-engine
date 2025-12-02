@@ -123,17 +123,21 @@ def config():
 
 @app.route('/api/test-connection', methods=['POST'])
 def test_connection():
-    """Test API connections"""
+    """Test API connections - uses database credentials if not provided in request"""
     data = request.get_json(silent=True) or {}
     results = {'ss': False, 'shopify': False, 'messages': []}
     
+    # Get S&S credentials - from request OR database
+    ss_config = get_config('ss_config') or {}
+    account_number = (data.get('ss_account_number', '').strip() or 
+                      ss_config.get('account_number', '').strip())
+    api_key = (data.get('ss_api_key', '').strip() or 
+               ss_config.get('api_key', '').strip())
+    
     # Test S&S Activewear
     try:
-        account_number = data.get('ss_account_number', '').strip()
-        api_key = data.get('ss_api_key', '').strip()
-        
         if not account_number or not api_key:
-            results['messages'].append('S&S Activewear API: Account Number and API Key are required')
+            results['messages'].append('S&S Activewear API: Credentials not configured')
         else:
             ss_client = SSActivewearClient(account_number, api_key)
             categories = ss_client.get_categories(limit=1)
@@ -143,27 +147,30 @@ def test_connection():
         results['messages'].append(f'S&S Activewear API: {str(e)}')
     except Exception as e:
         error_msg = str(e)
-        # Make error message more user-friendly
         if '403' in error_msg or 'Forbidden' in error_msg:
             results['messages'].append(
                 f'S&S Activewear API: Authentication failed (403 Forbidden). '
-                f'Please verify:\n'
-                f'• Account Number is correct\n'
-                f'• API Key is correct and active\n'
-                f'• Contact api@ssactivewear.com for API key support'
+                f'Please verify credentials are correct.'
             )
         else:
             results['messages'].append(f'S&S Activewear API: {error_msg}')
     
+    # Get Shopify credentials - from request OR database
+    shopify_config = get_config('shopify_config') or {}
+    shopify_domain = (data.get('shopify_domain', '').strip() or 
+                      shopify_config.get('shop_domain', '').strip())
+    shopify_token = (data.get('shopify_token', '').strip() or 
+                     shopify_config.get('access_token', '').strip())
+    
     # Test Shopify
     try:
-        shopify_client = ShopifyClient(
-            data.get('shopify_domain'),
-            data.get('shopify_token')
-        )
-        shop_info = shopify_client.get_shop_info()
-        results['shopify'] = True
-        results['messages'].append(f'Shopify: Connected to {shop_info.get("name", "store")}')
+        if not shopify_domain or not shopify_token:
+            results['messages'].append('Shopify API: Credentials not configured')
+        else:
+            shopify_client = ShopifyClient(shopify_domain, shopify_token)
+            shop_info = shopify_client.get_shop_info()
+            results['shopify'] = True
+            results['messages'].append(f'Shopify: Connected to {shop_info.get("name", "store")}')
     except Exception as e:
         results['messages'].append(f'Shopify API: {str(e)}')
     
@@ -381,10 +388,21 @@ def preview():
     """Preview products before sync - uses same filtering logic as sync"""
     try:
         data = request.get_json(silent=True) or {}
-        ss_client = SSActivewearClient(
-            data.get('ss_account_number'),
-            data.get('ss_api_key')
-        )
+        
+        # Get credentials from database
+        ss_config = get_config('ss_config') or {}
+        account_number = ss_config.get('account_number', '').strip()
+        api_key = ss_config.get('api_key', '').strip()
+        
+        if not account_number or not api_key:
+            return jsonify({
+                'status': 'error',
+                'message': 'S&S API credentials not configured',
+                'products': [],
+                'count': 0
+            }), 400
+        
+        ss_client = SSActivewearClient(account_number, api_key)
         
         # Get filter options - can be from filter_options or sync_options
         filter_options = data.get('filter_options', {})
