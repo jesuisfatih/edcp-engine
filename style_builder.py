@@ -217,28 +217,29 @@ class StyleBuilder:
         
         self._log(f"  ✅ Total variants built: {len(variants_list)}")
         
-        # Build product images with color-based alt tags
-        # Use dict to track unique URLs with their color info: {url: color_name}
-        image_color_map = {}
+        # Build product images - ONE image per COLOR (not per URL)
+        # This prevents duplicate images for same color different sizes
+        # {color_name: url} - only keep first (front) image per color
+        color_to_image = {}
         for product in products:
             color_name = product.get('colorName', '') or product.get('color', '')
-            images_with_color = self._extract_images_with_color(product, color_name)
-            for url, color in images_with_color:
-                if url not in image_color_map:
-                    image_color_map[url] = color
+            if not color_name or color_name in color_to_image:
+                continue  # Skip if no color or already have image for this color
+            
+            # Get the primary (front) image for this color
+            front_image = self._get_primary_color_image(product)
+            if front_image:
+                color_to_image[color_name] = front_image
         
         images_list = []
-        for idx, (url, color_name) in enumerate(sorted(image_color_map.items())):
+        for idx, (color_name, url) in enumerate(sorted(color_to_image.items())):
             # Format alt text as #Color_ColorName for Shopify variant image linking
             # IMPORTANT: Replace hyphens with spaces (Tri-Rust -> Tri Rust)
-            if color_name:
-                clean_color = color_name.replace('-', ' ')
-                alt_text = f"#Color_{clean_color}"
-            else:
-                alt_text = None
+            clean_color = color_name.replace('-', ' ')
+            alt_text = f"#Color_{clean_color}"
             images_list.append(StyleImage(url=url, alt_text=alt_text, position=idx))
         
-        self._log(f"  📸 Built {len(images_list)} images with color alt tags")
+        self._log(f"  📸 Built {len(images_list)} images (1 per color, {len(color_to_image)} unique colors)")
         
         # Add variants and images to style_data
         style_data['variants'] = variants_list  # CRITICAL: Add variants
@@ -394,6 +395,32 @@ class StyleBuilder:
                 urls.append(url.strip())
         
         return urls
+    
+    def _get_primary_color_image(self, product: Dict) -> Optional[str]:
+        """
+        Get the PRIMARY (front) image for a color.
+        Returns only ONE image URL per color - typically the front image.
+        This prevents multiple images for same color (S, M, L all sharing one image).
+        """
+        # Priority order: front image is most important
+        priority_fields = [
+            'colorFrontImage',      # Best: front view
+            'colorOnModelFrontImage',  # On-model front
+            'colorSideImage',       # Side view
+            'colorBackImage',       # Back view
+            'image',                # Generic
+            'imageUrl'
+        ]
+        
+        for field in priority_fields:
+            url = product.get(field, '')
+            if url and url.strip():
+                # S&S URLs might be relative - make them absolute
+                if not url.startswith('http'):
+                    url = f"https://www.ssactivewear.com/{url.lstrip('/')}"
+                return url.strip()
+        
+        return None
     
     def _extract_images_with_color(self, product: Dict, color_name: str) -> List[tuple]:
         """
