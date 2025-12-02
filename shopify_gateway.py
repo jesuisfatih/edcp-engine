@@ -66,20 +66,15 @@ class ShopifyGateway:
             print(f"   ⚠️ Could not check/delete existing products: {e}")
             # Continue anyway
         
-        # Build REST API payload with SEQUENTIAL NUMBERING
-        # GUARANTEES 100% unique variants
+        # Build REST API payload
+        # Variants are now pre-merged by StyleBuilder (no duplicates)
         variants_payload = []
         
-        for idx, v in enumerate(style_part.variants, start=1):
-            # CRITICAL: Each variant gets sequential number
-            # option1 = "Color NUMBER" (e.g. "Black 1", "White 2")
-            # option2 = "Size" (e.g. "S", "M", "L")
-            unique_color = f"{v.color_name} {idx}"  # Black 1, Black 2, White 3
-            
+        for v in style_part.variants:
             variant = {
-                'option1': unique_color,  # Color + sequential number
+                'option1': v.color_name,  # Clean color name (no numbering needed)
                 'option2': v.size_name,   # Size
-                'sku': v.sku,
+                'sku': v.sku,             # Primary SKU
                 'price': str(v.price),
                 'barcode': v.barcode,
                 'weight': float(v.weight),
@@ -88,7 +83,7 @@ class ShopifyGateway:
                 'inventory_policy': 'deny'
             }
             
-            # Add inventory if available
+            # Add aggregated inventory
             if v.inventory_quantity is not None:
                 variant['inventory_quantity'] = int(v.inventory_quantity)
             
