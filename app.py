@@ -247,7 +247,7 @@ def stop_sync():
 
 @app.route('/api/products/count', methods=['POST'])
 def products_count():
-    """Get count of products based on filters"""
+    """Get count of products based on filters - NO Shopify needed"""
     try:
         data = request.json
         ss_client = SSActivewearClient(
@@ -257,19 +257,60 @@ def products_count():
         
         sync_options = data.get('sync_options', {})
         
-        # Create a temporary SyncManager to use its filtering logic
-        temp_sync_manager = SyncManager(ss_client, None, sync_options)
+        # Get products directly from S&S (no SyncManager needed)
+        style_ids = sync_options.get('filter_styles', [])
+        category_ids = sync_options.get('filter_categories', [])
+        brand_names = sync_options.get('filter_brands', [])
+        warehouse_codes = sync_options.get('filter_warehouses', [])
         
-        # Use the internal method to get filtered products
-        products = temp_sync_manager._get_products_to_sync()
+        # Build style ID parameter
+        if style_ids:
+            if isinstance(style_ids, list):
+                style_param = ','.join(str(s) for s in style_ids if s)
+            else:
+                style_param = str(style_ids)
+        else:
+            style_param = None
+        
+        # Build warehouse parameter
+        warehouse_param = ','.join(warehouse_codes) if warehouse_codes else None
+        
+        # Fetch products
+        products = ss_client.get_products(
+            styleid=style_param,
+            warehouses=warehouse_param,
+            limit=5000
+        )
+        
+        # Filter by categories if specified
+        if category_ids:
+            cat_list = [str(c).strip() for c in category_ids if c]
+            filtered = []
+            for p in products:
+                p_cats = str(p.get('categories', '')).split(',')
+                p_cats = [c.strip() for c in p_cats if c.strip()]
+                if any(cat in p_cats for cat in cat_list):
+                    filtered.append(p)
+            products = filtered
+        
+        # Filter by brands if specified
+        if brand_names:
+            brand_list = [str(b).strip() for b in brand_names if b]
+            products = [p for p in products if p.get('brandName', '').strip() in brand_list]
+        
+        # Count unique styles
+        unique_styles = set(p.get('styleID') for p in products if p.get('styleID'))
         
         response = jsonify({
             'status': 'success',
-            'count': len(products)
+            'count': len(products),
+            'style_count': len(unique_styles)
         })
         response.headers['Content-Length'] = str(len(response.get_data()))
         return response
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         response = jsonify({
             'status': 'error',
             'message': str(e),
