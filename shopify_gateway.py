@@ -24,7 +24,7 @@ class ShopifyGateway:
             self.shop_domain = f"https://{self.shop_domain}"
         
         self.access_token = access_token
-        self.api_version = "2024-10"  # Use 2024-04+ for 2048 variant support
+        self.api_version = "2025-10"  # Must match shopify_client.py version
         self.graphql_url = f"{self.shop_domain}/admin/api/{self.api_version}/graphql.json"
         self.headers = {
             "X-Shopify-Access-Token": access_token,
