@@ -101,7 +101,7 @@ class StyleBuilder:
                     continue
                 
                 seen_option_keys.add(variant.option_key)
-                style.variants.append(variant)
+                variants_list.append(variant)
                 
                 if idx < 3:  # Log first 3 variants
                     self._log(f"  📊 Variant {idx+1}: {variant.sku} - {variant.color_name} / {variant.size_name}")
