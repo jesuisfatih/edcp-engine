@@ -393,8 +393,9 @@ def preview():
             products = ss_client.get_products(limit=5000)
             print(f"Preview: Fetched {len(products)} products (no style filter)")
         
-        # Filter by categories
-        if category_list:
+        # Filter by categories - ONLY if no style filter was used
+        # (style filter is more specific, category would over-filter)
+        if category_list and not style_param:
             filtered = []
             for product in products:
                 product_cats = product.get('categories', '')
@@ -404,21 +405,8 @@ def preview():
                         filtered.append(product)
             products = filtered
             print(f"Preview: After category filter: {len(products)} products")
-        
-        # Filter by styles
-        if style_list:
-            filtered = []
-            for product in products:
-                product_style_id = product.get('styleID')
-                if product_style_id:
-                    try:
-                        pid = int(product_style_id)
-                        if pid in style_list:
-                            filtered.append(product)
-                    except (ValueError, TypeError):
-                        pass
-            products = filtered
-            print(f"Preview: After style filter: {len(products)} products")
+        elif style_param:
+            print(f"Preview: Skipping category filter (style filter already applied)")
         
         # Filter by brands
         if brand_list:
