@@ -142,7 +142,6 @@ class StyleBuilder:
         # Save SKU mapping to JSON file for reference
         if merged_count > 0:
             try:
-                import json
                 mapping_data = {
                     "style_id": str(style_id),
                     "timestamp": datetime.now().isoformat(),
