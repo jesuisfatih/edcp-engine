@@ -324,7 +324,7 @@ function getSyncOptions() {
         filter_styles: selectedStyles.length > 0 ? selectedStyles : null,
         filter_brands: selectedBrands.length > 0 ? selectedBrands : null,
         filter_partnumber: document.getElementById('filterPartNumber')?.value.trim() || null,
-        filter_warehouses: document.getElementById('filterWarehouses')?.value.trim() || null,
+        filter_warehouses: window.getSelectedWarehouses ? window.getSelectedWarehouses() : [],
         filter_sku: document.getElementById('filterSku')?.value.trim() || null,
         price_field: document.getElementById('priceField')?.value || 'customerPrice',
         inventory_management: document.getElementById('inventoryManagement')?.value || 'shopify',
@@ -1023,14 +1023,17 @@ function toggleAllBrands() {
 async function saveFilters() {
     selectedBrands = getSelectedBrands();
     
+    // Get selected warehouses from warehouse_ui.js
+    const selectedWarehouseCodes = window.getSelectedWarehouses ? window.getSelectedWarehouses() : [];
+    
     // Update filter summary
     const summaryDiv = document.getElementById('filtersSummaryContent');
     summaryDiv.innerHTML = `
+        <p><strong>Seçilen Lokasyonlar:</strong> ${selectedWarehouseCodes.length} adet</p>
         <p><strong>Seçilen Kategoriler:</strong> ${selectedCategories.length} adet</p>
         <p><strong>Seçilen Stiller:</strong> ${selectedStyles.length} adet</p>
         <p><strong>Seçilen Markalar:</strong> ${selectedBrands.length} adet</p>
-        <p><strong>Part Number:</strong> ${document.getElementById('filterPartNumber').value || 'Yok'}</p>
-        <p><strong>Depo:</strong> ${document.getElementById('filterWarehouses').value || 'Yok'}</p>
+        <p><strong>Part Number:</strong> ${document.getElementById('filterPartNumber')?.value || 'Yok'}</p>
         <p><strong>SKU:</strong> ${document.getElementById('filterSku').value || 'Yok'}</p>
     `;
     
