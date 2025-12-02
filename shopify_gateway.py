@@ -125,7 +125,7 @@ class ShopifyGateway:
             {"name": "Size", "position": 2, "values": sizes}
         ]
         
-        # Build variants with inventory
+        # Build variants (ProductVariantSetInput format)
         variants = []
         for v in style_part.variants:
             variant = {
@@ -134,9 +134,7 @@ class ShopifyGateway:
                     {"optionName": "Size", "name": v.size_name}
                 ],
                 "price": str(v.price),
-                "sku": v.sku,
-                "inventoryPolicy": "DENY",
-                "inventoryManagement": "SHOPIFY"
+                "sku": v.sku
             }
             
             if v.barcode:
