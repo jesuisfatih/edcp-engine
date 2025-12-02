@@ -326,6 +326,8 @@ window.getSyncOptions = function getSyncOptions() {
         filter_partnumber: document.getElementById('filterPartNumber')?.value.trim() || null,
         filter_warehouses: window.getSelectedWarehouses ? window.getSelectedWarehouses() : [],
         filter_sku: document.getElementById('filterSku')?.value.trim() || null,
+        // Arbitraj (pricing) settings
+        arbitraj_settings: window.getArbitrajSettings ? window.getArbitrajSettings() : null,
         price_field: document.getElementById('priceField')?.value || 'customerPrice',
         inventory_management: document.getElementById('inventoryManagement')?.value || 'shopify',
         image_size: document.getElementById('imageSize')?.value || '_fl',

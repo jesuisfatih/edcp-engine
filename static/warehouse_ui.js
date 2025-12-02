@@ -4,9 +4,19 @@ let selectedWarehouses = [];
 let warehousesData = [];
 let warehousePreviewProducts = []; // Store preview products for stock detail modal
 
+// Arbitraj (pricing) settings
+let arbitrajSettings = {
+    enabled: false,
+    markupPercent: 100,  // 100% = 2x price (default)
+    roundingType: 'none', // 'none', '99', '90', '00'
+    fixedPrice: null,     // null = use markup, number = fixed price
+    minimumPrice: null    // minimum price floor
+};
+
 // Immediately export to window
 if (typeof window !== 'undefined') {
     window.selectedWarehouses = selectedWarehouses;
+    window.arbitrajSettings = arbitrajSettings;
 }
 
 async function loadWarehouses() {
@@ -240,9 +250,10 @@ function displayPreviewWithLocations(productCount, warehouses, products = []) {
         const name = loc.name || code;
         const stock = loc.total_stock || 0;
         const count = loc.product_count || 0;
+        const isSelected = isHighest; // Initially highest is selected
         
         html += `
-            <div class="list-group-item ${isHighest ? 'list-group-item-success' : ''}">
+            <div class="list-group-item ${isHighest ? 'list-group-item-success' : ''}" id="loc-item-${code}">
                 <div class="d-flex align-items-center">
                     <div class="form-check flex-grow-1">
                         <input class="form-check-input" type="radio" 
@@ -265,7 +276,22 @@ function displayPreviewWithLocations(productCount, warehouses, products = []) {
                                 title="Stok Detayları">
                             <i class="fas fa-info-circle"></i>
                         </button>
+                        <!-- Arbitraj Button - only visible when selected -->
+                        <button type="button" class="btn btn-sm btn-warning arbitraj-btn" 
+                                id="arbitraj-btn-${code}"
+                                onclick="window.showArbitrajModal('${code}', '${name}')"
+                                title="Fiyat Arbitrajı Ayarla"
+                                style="${isSelected ? '' : 'display:none;'}">
+                            <i class="fas fa-tags"></i> Fiyat Ayarı
+                        </button>
                     </div>
+                </div>
+                <!-- Arbitraj indicator when enabled -->
+                <div class="arbitraj-indicator mt-2" id="arbitraj-indicator-${code}" style="display:none;">
+                    <small class="text-warning">
+                        <i class="fas fa-calculator"></i> 
+                        <span id="arbitraj-summary-${code}"></span>
+                    </small>
                 </div>
             </div>
         `;
@@ -532,6 +558,24 @@ function filterStockTable() {
 function selectLocation(code) {
     selectedWarehouses = [code];
     console.log('Selected location:', code);
+    
+    // Hide all arbitraj buttons, show only selected one
+    document.querySelectorAll('.arbitraj-btn').forEach(btn => {
+        btn.style.display = 'none';
+    });
+    const selectedBtn = document.getElementById(`arbitraj-btn-${code}`);
+    if (selectedBtn) {
+        selectedBtn.style.display = '';
+    }
+    
+    // Update list item styling
+    document.querySelectorAll('.list-group-item').forEach(item => {
+        item.classList.remove('list-group-item-success');
+    });
+    const selectedItem = document.getElementById(`loc-item-${code}`);
+    if (selectedItem) {
+        selectedItem.classList.add('list-group-item-success');
+    }
 }
 
 function saveFiltersAndStart() {
@@ -553,6 +597,308 @@ function saveFiltersAndStart() {
     }, 500);
 }
 
+// ==================== ARBITRAJ (PRICING) FUNCTIONS ====================
+
+// Create arbitraj modal HTML
+function createArbitrajModal() {
+    return `
+        <div class="modal fade" id="arbitrajModal" tabindex="-1" aria-labelledby="arbitrajModalLabel" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header bg-warning">
+                        <h5 class="modal-title" id="arbitrajModalLabel">
+                            <i class="fas fa-tags"></i> Fiyat Arbitrajı Ayarları
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="alert alert-info mb-3">
+                            <i class="fas fa-info-circle"></i>
+                            <strong>Lokasyon:</strong> <span id="arbitrajLocationName"></span>
+                        </div>
+                        
+                        <!-- Enable/Disable -->
+                        <div class="form-check form-switch mb-4">
+                            <input class="form-check-input" type="checkbox" id="arbitrajEnabled">
+                            <label class="form-check-label" for="arbitrajEnabled">
+                                <strong>Fiyat Arbitrajını Etkinleştir</strong>
+                            </label>
+                        </div>
+                        
+                        <div id="arbitrajOptions">
+                            <!-- Pricing Mode -->
+                            <div class="mb-3">
+                                <label class="form-label"><strong>Fiyatlandırma Modu</strong></label>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="pricingMode" id="modeMarkup" value="markup" checked>
+                                    <label class="form-check-label" for="modeMarkup">
+                                        Kar Marjı ile Hesapla
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="pricingMode" id="modeFixed" value="fixed">
+                                    <label class="form-check-label" for="modeFixed">
+                                        Sabit Fiyat Uygula
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            <!-- Markup Settings -->
+                            <div id="markupSettings" class="border rounded p-3 mb-3">
+                                <label class="form-label">Kar Marjı (%)</label>
+                                <div class="input-group mb-2">
+                                    <span class="input-group-text">%</span>
+                                    <input type="number" class="form-control" id="markupPercent" value="100" min="0" max="1000">
+                                    <span class="input-group-text">kar</span>
+                                </div>
+                                <small class="text-muted">
+                                    Örnek: %100 = 2x fiyat, %50 = 1.5x fiyat, %150 = 2.5x fiyat
+                                </small>
+                                <div class="mt-2 p-2 bg-light rounded">
+                                    <strong>Önizleme:</strong> $10 maliyet → <span id="markupPreview">$20.00</span> satış
+                                </div>
+                            </div>
+                            
+                            <!-- Fixed Price Settings -->
+                            <div id="fixedSettings" class="border rounded p-3 mb-3" style="display:none;">
+                                <label class="form-label">Sabit Fiyat</label>
+                                <div class="input-group">
+                                    <span class="input-group-text">$</span>
+                                    <input type="number" class="form-control" id="fixedPrice" value="0" min="0" step="0.01">
+                                </div>
+                                <small class="text-muted">Tüm ürünler bu fiyattan satılacak</small>
+                            </div>
+                            
+                            <!-- Rounding Options -->
+                            <div class="mb-3">
+                                <label class="form-label"><strong>Yuvarlama</strong></label>
+                                <div class="btn-group w-100" role="group">
+                                    <input type="radio" class="btn-check" name="rounding" id="roundNone" value="none" checked>
+                                    <label class="btn btn-outline-secondary" for="roundNone">Yok</label>
+                                    
+                                    <input type="radio" class="btn-check" name="rounding" id="round99" value="99">
+                                    <label class="btn btn-outline-secondary" for="round99">.99</label>
+                                    
+                                    <input type="radio" class="btn-check" name="rounding" id="round90" value="90">
+                                    <label class="btn btn-outline-secondary" for="round90">.90</label>
+                                    
+                                    <input type="radio" class="btn-check" name="rounding" id="round00" value="00">
+                                    <label class="btn btn-outline-secondary" for="round00">.00</label>
+                                </div>
+                                <small class="text-muted d-block mt-1">
+                                    Örnek: $23.47 → .99 = $23.99, .90 = $23.90, .00 = $24.00
+                                </small>
+                            </div>
+                            
+                            <!-- Minimum Price -->
+                            <div class="mb-3">
+                                <label class="form-label"><strong>Minimum Fiyat (Opsiyonel)</strong></label>
+                                <div class="input-group">
+                                    <span class="input-group-text">$</span>
+                                    <input type="number" class="form-control" id="minimumPrice" value="" min="0" step="0.01" placeholder="Boş = sınırsız">
+                                </div>
+                                <small class="text-muted">Hesaplanan fiyat bunun altına düşmez</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+                        <button type="button" class="btn btn-warning" onclick="window.saveArbitrajSettings()">
+                            <i class="fas fa-save"></i> Kaydet
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+// Show arbitraj modal
+function showArbitrajModal(locationCode, locationName) {
+    // Ensure modal exists
+    if (!document.getElementById('arbitrajModal')) {
+        document.body.insertAdjacentHTML('beforeend', createArbitrajModal());
+        setupArbitrajListeners();
+    }
+    
+    // Set location name
+    document.getElementById('arbitrajLocationName').textContent = `${locationName} (${locationCode})`;
+    
+    // Load current settings
+    document.getElementById('arbitrajEnabled').checked = arbitrajSettings.enabled;
+    document.getElementById('markupPercent').value = arbitrajSettings.markupPercent;
+    document.getElementById('fixedPrice').value = arbitrajSettings.fixedPrice || '';
+    document.getElementById('minimumPrice').value = arbitrajSettings.minimumPrice || '';
+    
+    // Set pricing mode
+    if (arbitrajSettings.fixedPrice !== null) {
+        document.getElementById('modeFixed').checked = true;
+        document.getElementById('markupSettings').style.display = 'none';
+        document.getElementById('fixedSettings').style.display = 'block';
+    } else {
+        document.getElementById('modeMarkup').checked = true;
+        document.getElementById('markupSettings').style.display = 'block';
+        document.getElementById('fixedSettings').style.display = 'none';
+    }
+    
+    // Set rounding
+    const roundingRadio = document.querySelector(`input[name="rounding"][value="${arbitrajSettings.roundingType}"]`);
+    if (roundingRadio) roundingRadio.checked = true;
+    
+    // Update preview
+    updateMarkupPreview();
+    
+    // Show modal
+    const modal = new bootstrap.Modal(document.getElementById('arbitrajModal'));
+    modal.show();
+}
+
+// Setup arbitraj modal event listeners
+function setupArbitrajListeners() {
+    // Pricing mode toggle
+    document.querySelectorAll('input[name="pricingMode"]').forEach(radio => {
+        radio.addEventListener('change', function() {
+            if (this.value === 'markup') {
+                document.getElementById('markupSettings').style.display = 'block';
+                document.getElementById('fixedSettings').style.display = 'none';
+            } else {
+                document.getElementById('markupSettings').style.display = 'none';
+                document.getElementById('fixedSettings').style.display = 'block';
+            }
+        });
+    });
+    
+    // Markup preview update
+    document.getElementById('markupPercent').addEventListener('input', updateMarkupPreview);
+    document.querySelectorAll('input[name="rounding"]').forEach(radio => {
+        radio.addEventListener('change', updateMarkupPreview);
+    });
+}
+
+// Update markup preview
+function updateMarkupPreview() {
+    const markup = parseFloat(document.getElementById('markupPercent').value) || 0;
+    const rounding = document.querySelector('input[name="rounding"]:checked')?.value || 'none';
+    
+    let price = 10 * (1 + markup / 100);
+    price = applyRounding(price, rounding);
+    
+    document.getElementById('markupPreview').textContent = `$${price.toFixed(2)}`;
+}
+
+// Apply rounding to price
+function applyRounding(price, roundingType) {
+    switch (roundingType) {
+        case '99':
+            return Math.floor(price) + 0.99;
+        case '90':
+            return Math.floor(price) + 0.90;
+        case '00':
+            return Math.ceil(price);
+        default:
+            return price;
+    }
+}
+
+// Save arbitraj settings
+function saveArbitrajSettings() {
+    arbitrajSettings.enabled = document.getElementById('arbitrajEnabled').checked;
+    arbitrajSettings.markupPercent = parseFloat(document.getElementById('markupPercent').value) || 0;
+    arbitrajSettings.roundingType = document.querySelector('input[name="rounding"]:checked')?.value || 'none';
+    
+    const pricingMode = document.querySelector('input[name="pricingMode"]:checked')?.value;
+    if (pricingMode === 'fixed') {
+        arbitrajSettings.fixedPrice = parseFloat(document.getElementById('fixedPrice').value) || null;
+    } else {
+        arbitrajSettings.fixedPrice = null;
+    }
+    
+    const minPrice = document.getElementById('minimumPrice').value;
+    arbitrajSettings.minimumPrice = minPrice ? parseFloat(minPrice) : null;
+    
+    console.log('Arbitraj settings saved:', arbitrajSettings);
+    
+    // Update indicator on selected location
+    updateArbitrajIndicator();
+    
+    // Close modal
+    bootstrap.Modal.getInstance(document.getElementById('arbitrajModal')).hide();
+    
+    // Show confirmation
+    showArbitrajConfirmation();
+}
+
+// Update arbitraj indicator on location
+function updateArbitrajIndicator() {
+    const code = selectedWarehouses[0];
+    if (!code) return;
+    
+    const indicator = document.getElementById(`arbitraj-indicator-${code}`);
+    const summary = document.getElementById(`arbitraj-summary-${code}`);
+    const btn = document.getElementById(`arbitraj-btn-${code}`);
+    
+    if (arbitrajSettings.enabled) {
+        let summaryText = '';
+        if (arbitrajSettings.fixedPrice !== null) {
+            summaryText = `Sabit Fiyat: $${arbitrajSettings.fixedPrice.toFixed(2)}`;
+        } else {
+            summaryText = `+%${arbitrajSettings.markupPercent} kar`;
+        }
+        
+        if (arbitrajSettings.roundingType !== 'none') {
+            summaryText += ` | .${arbitrajSettings.roundingType} yuvarlama`;
+        }
+        
+        if (arbitrajSettings.minimumPrice) {
+            summaryText += ` | Min: $${arbitrajSettings.minimumPrice.toFixed(2)}`;
+        }
+        
+        if (indicator) {
+            indicator.style.display = 'block';
+            summary.textContent = summaryText;
+        }
+        
+        if (btn) {
+            btn.classList.remove('btn-warning');
+            btn.classList.add('btn-success');
+            btn.innerHTML = '<i class="fas fa-check"></i> Fiyat Ayarlı';
+        }
+    } else {
+        if (indicator) {
+            indicator.style.display = 'none';
+        }
+        if (btn) {
+            btn.classList.remove('btn-success');
+            btn.classList.add('btn-warning');
+            btn.innerHTML = '<i class="fas fa-tags"></i> Fiyat Ayarı';
+        }
+    }
+}
+
+// Show confirmation toast
+function showArbitrajConfirmation() {
+    const message = arbitrajSettings.enabled 
+        ? '✅ Fiyat arbitrajı ayarları kaydedildi. Aktarım sırasında uygulanacak.'
+        : 'Fiyat arbitrajı devre dışı.';
+    
+    // Simple alert for now
+    const alertDiv = document.createElement('div');
+    alertDiv.className = 'alert alert-success alert-dismissible fade show position-fixed';
+    alertDiv.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    document.body.appendChild(alertDiv);
+    
+    setTimeout(() => alertDiv.remove(), 3000);
+}
+
+// Get arbitraj settings for sync
+function getArbitrajSettings() {
+    return arbitrajSettings;
+}
+
 // CRITICAL: Export ALL functions to window DIRECTLY (no if block)
 window.loadWarehouses = loadWarehouses;
 window.getSelectedWarehouses = getSelectedWarehouses;
@@ -565,6 +911,11 @@ window.displayPreviewWithLocations = displayPreviewWithLocations;
 window.showStockDetail = showStockDetail;
 window.showAllProductsDetail = showAllProductsDetail;
 window.filterStockTable = filterStockTable;
+// Arbitraj functions
+window.showArbitrajModal = showArbitrajModal;
+window.saveArbitrajSettings = saveArbitrajSettings;
+window.getArbitrajSettings = getArbitrajSettings;
+window.arbitrajSettings = arbitrajSettings;
 
 console.log('✅ Warehouse UI functions exported to window');
 
