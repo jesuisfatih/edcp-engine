@@ -122,8 +122,14 @@ class StyleBuilder:
         for idx, url in enumerate(sorted(image_urls)):
             images_list.append(StyleImage(url=url, position=idx))
         
-        # Add images to style_data
+        # Add variants and images to style_data
+        style_data['variants'] = variants_list  # CRITICAL: Add variants
         style_data['images'] = images_list
+        
+        # Validate before creating Style
+        if not variants_list:
+            self._log(f"  ❌ ERROR: No variants for style {style_id}")
+            raise ValueError(f"Style {style_id} must have at least one variant")
         
         # Now create Style object with all data
         style = Style(**style_data)
