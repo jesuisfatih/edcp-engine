@@ -39,7 +39,11 @@ class StyleVariant:
     @property
     def option_key(self) -> tuple:
         """Unique key for this variant's options (for deduplication)"""
-        return (self.color_name.strip(), self.size_name.strip())
+        # CRITICAL: Case-insensitive and whitespace-safe comparison
+        return (
+            self.color_name.strip().lower() if self.color_name else '',
+            self.size_name.strip().lower() if self.size_name else ''
+        )
     
     def to_dict(self) -> Dict:
         """Convert to dictionary"""

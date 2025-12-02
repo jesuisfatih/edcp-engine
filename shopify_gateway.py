@@ -49,7 +49,11 @@ class ShopifyGateway:
         seen_options = set()  # Track option combinations to avoid duplicates
         
         for v in style_part.variants:
-            option_key = (v.color_name.strip(), v.size_name.strip())
+            # CRITICAL: Case-insensitive and whitespace-safe deduplication
+            option_key = (
+                v.color_name.strip().lower() if v.color_name else '',
+                v.size_name.strip().lower() if v.size_name else ''
+            )
             
             # Skip duplicate option combinations
             if option_key in seen_options:
