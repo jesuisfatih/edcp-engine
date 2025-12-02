@@ -36,9 +36,15 @@ class StyleVariant:
     
     def __post_init__(self):
         """Ensure color and size have values (fallback to SKU if empty)"""
-        if not self.color_name or not self.color_name.strip():
+        # CRITICAL: Aggressive normalization to prevent Shopify duplicates
+        if self.color_name:
+            self.color_name = ' '.join(self.color_name.strip().split())  # Normalize whitespace
+        else:
             self.color_name = f"Color-{self.sku[:10]}" if self.sku else "Default"
-        if not self.size_name or not self.size_name.strip():
+        
+        if self.size_name:
+            self.size_name = ' '.join(self.size_name.strip().split())  # Normalize whitespace
+        else:
             self.size_name = f"Size-{self.sku[:10]}" if self.sku else "OneSize"
     
     @property
