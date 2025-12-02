@@ -80,12 +80,16 @@ async function loadConfig() {
         const response = await fetch('/api/config');
         const data = await response.json();
         
-        if (data.status === 'success') {
-            document.getElementById('ss_account_number').value = data.ss_config?.account_number || '';
-            document.getElementById('ss_api_key').value = data.ss_config?.api_key || '';
-            document.getElementById('shopify_domain').value = data.shopify_config?.shop_domain || '';
-            document.getElementById('shopify_token').value = data.shopify_config?.access_token || '';
+        // API returns ss_config and shopify_config directly
+        if (data.ss_config) {
+            document.getElementById('ss_account_number').value = data.ss_config.account_number || '';
+            document.getElementById('ss_api_key').value = data.ss_config.api_key || '';
         }
+        if (data.shopify_config) {
+            document.getElementById('shopify_domain').value = data.shopify_config.shop_domain || '';
+            document.getElementById('shopify_token').value = data.shopify_config.access_token || '';
+        }
+        console.log('Config loaded:', data);
     } catch (error) {
         console.error('Error loading config:', error);
     }
