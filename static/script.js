@@ -310,7 +310,7 @@ async function loadConfiguration() {
 
 // Get sync options
 // Get sync options - CRITICAL: Must use selectedCategories, selectedStyles, selectedBrands
-function getSyncOptions() {
+window.getSyncOptions = function getSyncOptions() {
     const options = {
         sync_all_products: document.getElementById('syncAllProducts')?.checked ?? true,
         create_new: document.getElementById('createNew')?.checked ?? true,
