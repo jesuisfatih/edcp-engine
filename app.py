@@ -79,25 +79,35 @@ def config():
             if not config_data:
                 return jsonify({'status': 'error', 'message': 'No data provided'}), 400
             
-            # Save to database
-            ss_config = {
-                'account_number': config_data.get('ss_account_number', '').strip(),
-                'api_key': config_data.get('ss_api_key', '').strip()
-            }
-            shopify_config = {
-                'shop_domain': config_data.get('shopify_domain', '').strip(),
-                'access_token': config_data.get('shopify_token', '').strip()
-            }
-            sync_options = config_data.get('sync_options', {})
+            # Get existing config to preserve values not being updated
+            existing_ss = get_config('ss_config') or {}
+            existing_shopify = get_config('shopify_config') or {}
+            existing_sync = get_config('sync_options') or {}
             
-            save_config('ss_config', ss_config)
-            save_config('shopify_config', shopify_config)
-            save_config('sync_options', sync_options)
+            # Only update ss_config if credentials are provided
+            if config_data.get('ss_account_number') or config_data.get('ss_api_key'):
+                ss_config = {
+                    'account_number': config_data.get('ss_account_number', existing_ss.get('account_number', '')).strip(),
+                    'api_key': config_data.get('ss_api_key', existing_ss.get('api_key', '')).strip()
+                }
+                save_config('ss_config', ss_config)
+                session['ss_config'] = ss_config
             
-            # Also save to session for backward compatibility
-            session['ss_config'] = ss_config
-            session['shopify_config'] = shopify_config
-            session['sync_options'] = sync_options
+            # Only update shopify_config if credentials are provided
+            if config_data.get('shopify_domain') or config_data.get('shopify_token'):
+                shopify_config = {
+                    'shop_domain': config_data.get('shopify_domain', existing_shopify.get('shop_domain', '')).strip(),
+                    'access_token': config_data.get('shopify_token', existing_shopify.get('access_token', '')).strip()
+                }
+                save_config('shopify_config', shopify_config)
+                session['shopify_config'] = shopify_config
+            
+            # Always update sync_options if provided
+            if 'sync_options' in config_data:
+                sync_options = config_data.get('sync_options', {})
+                save_config('sync_options', sync_options)
+                session['sync_options'] = sync_options
+            
             session.permanent = True
             
             return jsonify({
