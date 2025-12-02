@@ -75,7 +75,7 @@ def config():
     """Save or retrieve configuration from database"""
     try:
         if request.method == 'POST':
-            config_data = request.json
+            config_data = request.get_json(silent=True)
             if not config_data:
                 return jsonify({'status': 'error', 'message': 'No data provided'}), 400
             
@@ -124,7 +124,7 @@ def config():
 @app.route('/api/test-connection', methods=['POST'])
 def test_connection():
     """Test API connections"""
-    data = request.json
+    data = request.get_json(silent=True) or {}
     results = {'ss': False, 'shopify': False, 'messages': []}
     
     # Test S&S Activewear
@@ -380,7 +380,7 @@ def products_count():
 def preview():
     """Preview products before sync - uses same filtering logic as sync"""
     try:
-        data = request.json
+        data = request.get_json(silent=True) or {}
         ss_client = SSActivewearClient(
             data.get('ss_account_number'),
             data.get('ss_api_key')
@@ -749,7 +749,7 @@ def auto_sync_status():
 def auto_sync_start():
     """Start automatic sync scheduler"""
     try:
-        data = request.json
+        data = request.get_json(silent=True) or {}
         config = {
             'ss_account_number': data.get('ss_account_number'),
             'ss_api_key': data.get('ss_api_key'),
@@ -824,9 +824,10 @@ def get_current_product():
 def rollback_last_sync():
     """Rollback last sync - delete created products, revert updated products"""
     try:
-        data = request.json
-        shopify_domain = data.get('shopify_domain', '').strip()
-        shopify_token = data.get('shopify_token', '').strip()
+        # Get credentials from database
+        shopify_config = get_config('shopify_config') or session.get('shopify_config', {})
+        shopify_domain = shopify_config.get('shop_domain', '').strip()
+        shopify_token = shopify_config.get('access_token', '').strip()
         
         if not shopify_domain or not shopify_token:
             return jsonify({
@@ -898,16 +899,19 @@ def rollback_last_sync():
 def delete_all_shopify_data():
     """Delete all products, collections from Shopify - DANGEROUS OPERATION"""
     try:
-        data = request.json
-        shopify_domain = data.get('shopify_domain', '').strip()
-        shopify_token = data.get('shopify_token', '').strip()
+        data = request.get_json(silent=True) or {}
+        
+        # Get credentials from database
+        shopify_config = get_config('shopify_config') or session.get('shopify_config', {})
+        shopify_domain = shopify_config.get('shop_domain', '').strip()
+        shopify_token = shopify_config.get('access_token', '').strip()
         delete_products = data.get('delete_products', True)
         delete_collections = data.get('delete_collections', True)
         
         if not shopify_domain or not shopify_token:
             return jsonify({
                 'status': 'error',
-                'message': 'Shopify credentials required'
+                'message': 'Shopify credentials not configured'
             }), 400
         
         shopify_client = ShopifyClient(shopify_domain, shopify_token)
