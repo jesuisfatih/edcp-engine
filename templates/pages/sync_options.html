@@ -49,6 +49,36 @@
         border-color: var(--accent-color);
         background: #fff5f5;
     }
+    /* Stock Detail Modal */
+    .stock-table-container {
+        max-height: 500px;
+        overflow-y: auto;
+    }
+    .stock-table th {
+        position: sticky;
+        top: 0;
+        background: #343a40;
+        color: white;
+        z-index: 10;
+    }
+    .stock-high { color: #28a745; font-weight: bold; }
+    .stock-medium { color: #ffc107; font-weight: bold; }
+    .stock-low { color: #dc3545; font-weight: bold; }
+    .style-header {
+        background: #e3f2fd !important;
+        font-weight: bold;
+    }
+    /* Arbitraj Indicator */
+    .arbitraj-indicator {
+        background: #fff3cd;
+        border-radius: 5px;
+        padding: 5px 10px;
+        font-size: 12px;
+    }
+    .arbitraj-btn-active {
+        background: #28a745 !important;
+        border-color: #28a745 !important;
+    }
 </style>
 {% endblock %}
 
@@ -164,7 +194,7 @@
                     <strong>ÖNEMLİ:</strong> Lokasyon seçimi zorunludur. En yüksek stoğu olan lokasyon otomatik seçilecek.
                 </div>
                 
-                <div id="previewContainer" class="border rounded p-3" style="max-height: 500px; overflow-y: auto;">
+                <div id="previewContainer" class="border rounded p-3" style="max-height: 600px; overflow-y: auto;">
                     <p class="text-muted text-center">Önizleme yüklemek için butona tıklayın</p>
                 </div>
                 
@@ -202,6 +232,129 @@
         </div>
     </div>
 </div>
+
+<!-- Stock Detail Modal -->
+<div class="modal fade" id="stockDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header bg-info text-white">
+                <h5 class="modal-title" id="stockDetailModalTitle">
+                    <i class="fas fa-boxes"></i> Stok Detayları
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="stockDetailModalBody">
+                <p class="text-center text-muted">Yükleniyor...</p>
+            </div>
+            <div class="modal-footer">
+                <div class="me-auto" id="stockDetailSummary"></div>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Kapat</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Arbitraj Modal -->
+<div class="modal fade" id="arbitrajModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title">
+                    <i class="fas fa-tags"></i> Fiyat Arbitrajı Ayarları
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info mb-3">
+                    <i class="fas fa-info-circle"></i>
+                    <strong>Lokasyon:</strong> <span id="arbitrajLocationName"></span>
+                </div>
+                
+                <!-- Enable/Disable -->
+                <div class="form-check form-switch mb-4">
+                    <input class="form-check-input" type="checkbox" id="arbitrajEnabled">
+                    <label class="form-check-label" for="arbitrajEnabled">
+                        <strong>Fiyat Arbitrajını Etkinleştir</strong>
+                    </label>
+                </div>
+                
+                <div id="arbitrajOptions">
+                    <!-- Pricing Mode -->
+                    <div class="mb-3">
+                        <label class="form-label"><strong>Fiyatlandırma Modu</strong></label>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="pricingMode" id="modeMarkup" value="markup" checked>
+                            <label class="form-check-label" for="modeMarkup">Kar Marjı ile Hesapla</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="pricingMode" id="modeFixed" value="fixed">
+                            <label class="form-check-label" for="modeFixed">Sabit Fiyat Uygula</label>
+                        </div>
+                    </div>
+                    
+                    <!-- Markup Settings -->
+                    <div id="markupSettings" class="border rounded p-3 mb-3">
+                        <label class="form-label">Kar Marjı (%)</label>
+                        <div class="input-group mb-2">
+                            <span class="input-group-text">%</span>
+                            <input type="number" class="form-control" id="markupPercent" value="100" min="0" max="1000">
+                            <span class="input-group-text">kar</span>
+                        </div>
+                        <small class="text-muted">Örnek: %100 = 2x fiyat, %50 = 1.5x fiyat</small>
+                        <div class="mt-2 p-2 bg-light rounded">
+                            <strong>Önizleme:</strong> $10 maliyet → <span id="markupPreview">$20.00</span> satış
+                        </div>
+                    </div>
+                    
+                    <!-- Fixed Price Settings -->
+                    <div id="fixedSettings" class="border rounded p-3 mb-3" style="display:none;">
+                        <label class="form-label">Sabit Fiyat</label>
+                        <div class="input-group">
+                            <span class="input-group-text">$</span>
+                            <input type="number" class="form-control" id="fixedPrice" value="0" min="0" step="0.01">
+                        </div>
+                        <small class="text-muted">Tüm ürünler bu fiyattan satılacak</small>
+                    </div>
+                    
+                    <!-- Rounding Options -->
+                    <div class="mb-3">
+                        <label class="form-label"><strong>Yuvarlama</strong></label>
+                        <div class="btn-group w-100" role="group">
+                            <input type="radio" class="btn-check" name="rounding" id="roundNone" value="none" checked>
+                            <label class="btn btn-outline-secondary" for="roundNone">Yok</label>
+                            
+                            <input type="radio" class="btn-check" name="rounding" id="round99" value="99">
+                            <label class="btn btn-outline-secondary" for="round99">.99</label>
+                            
+                            <input type="radio" class="btn-check" name="rounding" id="round90" value="90">
+                            <label class="btn btn-outline-secondary" for="round90">.90</label>
+                            
+                            <input type="radio" class="btn-check" name="rounding" id="round00" value="00">
+                            <label class="btn btn-outline-secondary" for="round00">.00</label>
+                        </div>
+                        <small class="text-muted d-block mt-1">Örnek: $23.47 → .99 = $23.99</small>
+                    </div>
+                    
+                    <!-- Minimum Price -->
+                    <div class="mb-3">
+                        <label class="form-label"><strong>Minimum Fiyat (Opsiyonel)</strong></label>
+                        <div class="input-group">
+                            <span class="input-group-text">$</span>
+                            <input type="number" class="form-control" id="minimumPrice" value="" min="0" step="0.01" placeholder="Boş = sınırsız">
+                        </div>
+                        <small class="text-muted">Hesaplanan fiyat bunun altına düşmez</small>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
+                <button type="button" class="btn btn-warning" onclick="saveArbitrajSettings()">
+                    <i class="fas fa-save"></i> Kaydet
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -214,17 +367,23 @@ let selectedLocation = null;
 let allCategories = [];
 let allStyles = [];
 let allBrands = [];
+let previewProducts = []; // Cache for stock detail
+
+// Arbitraj settings
+let arbitrajSettings = {
+    enabled: false,
+    markupPercent: 100,
+    roundingType: 'none',
+    fixedPrice: null,
+    minimumPrice: null
+};
 
 // Navigation
 function goToStep(step) {
-    // Enable target tab
     document.getElementById(`step${step}-tab`).disabled = false;
-    
-    // Activate tab using Bootstrap
     const tab = new bootstrap.Tab(document.getElementById(`step${step}-tab`));
     tab.show();
     
-    // Auto-load data based on step
     if (step === 2 && selectedCategories.length > 0) {
         loadStyles();
     } else if (step === 3 && selectedStyles.length > 0) {
@@ -232,7 +391,7 @@ function goToStep(step) {
     }
 }
 
-// Load Categories
+// ==================== CATEGORIES ====================
 async function loadCategories() {
     const container = document.getElementById('categoriesList');
     container.innerHTML = '<div class="text-center"><div class="spinner-border"></div> Yükleniyor...</div>';
@@ -260,15 +419,15 @@ function renderCategories(categories) {
     const container = document.getElementById('categoriesList');
     container.innerHTML = categories.map(cat => `
         <div class="filter-checkbox ${selectedCategories.includes(cat.categoryID) ? 'selected' : ''}" 
-             data-id="${cat.categoryID}" data-name="${cat.name || cat.categoryName}" onclick="toggleItem('categories', ${cat.categoryID}, this)">
+             data-id="${cat.categoryID}" data-name="${cat.name || cat.categoryName || ''}" onclick="toggleItem('categories', ${cat.categoryID}, this)">
             <input type="checkbox" ${selectedCategories.includes(cat.categoryID) ? 'checked' : ''} style="pointer-events: none;">
-            ${cat.name || cat.categoryName}
+            ${cat.name || cat.categoryName || 'Kategori ' + cat.categoryID}
         </div>
     `).join('');
     updateButtons();
 }
 
-// Load Styles
+// ==================== STYLES ====================
 async function loadStyles() {
     const container = document.getElementById('stylesList');
     container.innerHTML = '<div class="text-center"><div class="spinner-border"></div> Yükleniyor...</div>';
@@ -281,7 +440,6 @@ async function loadStyles() {
         });
         const data = await response.json();
         
-        // API returns styles array or status success with styles
         const styles = data.styles || [];
         if (styles.length > 0) {
             allStyles = styles;
@@ -313,7 +471,7 @@ function renderStyles(styles) {
     updateButtons();
 }
 
-// Load Brands
+// ==================== BRANDS ====================
 async function loadBrands() {
     const container = document.getElementById('brandsList');
     container.innerHTML = '<div class="text-center"><div class="spinner-border"></div> Yükleniyor...</div>';
@@ -326,7 +484,6 @@ async function loadBrands() {
         });
         const data = await response.json();
         
-        // API returns brands, all_brands, or status success with brands
         const brands = data.brands || data.all_brands || [];
         if (brands.length > 0) {
             allBrands = brands;
@@ -345,7 +502,7 @@ function renderBrands(brands) {
     const container = document.getElementById('brandsList');
     container.innerHTML = brands.map(brand => `
         <div class="filter-checkbox ${selectedBrands.includes(brand.brandID) ? 'selected' : ''}" 
-             data-id="${brand.brandID}" data-name="${brand.name || brand.brandName}" onclick="toggleItem('brands', ${brand.brandID}, this)">
+             data-id="${brand.brandID}" data-name="${brand.name || brand.brandName || ''}" onclick="toggleItem('brands', ${brand.brandID}, this)">
             <input type="checkbox" ${selectedBrands.includes(brand.brandID) ? 'checked' : ''} style="pointer-events: none;">
             ${brand.name || brand.brandName}
             ${brand.activeProducts ? `<small class="text-muted ms-2">(${brand.activeProducts} ürün)</small>` : ''}
@@ -354,73 +511,440 @@ function renderBrands(brands) {
     updateButtons();
 }
 
-// Load Preview with Locations
+// ==================== PREVIEW + LOCATIONS ====================
 async function loadPreview() {
     const container = document.getElementById('previewContainer');
     container.innerHTML = '<div class="text-center"><div class="spinner-border"></div> Yükleniyor...</div>';
     
     try {
-        // Get product count
-        const countResponse = await fetch('/api/products/count', {
+        // Parallel API calls
+        const [countResponse, whResponse] = await Promise.all([
+            fetch('/api/products/count', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    sync_options: {
+                        filter_categories: selectedCategories,
+                        filter_styles: selectedStyles,
+                        filter_brands: selectedBrands
+                    }
+                })
+            }),
+            fetch('/api/warehouses', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({})
+            })
+        ]);
+        
+        const countData = await countResponse.json();
+        const whData = await whResponse.json();
+        
+        console.log('Count:', countData);
+        console.log('Warehouses:', whData);
+        
+        const productCount = countData.count || 0;
+        
+        let html = `
+            <div class="alert alert-success mb-3">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div><strong>✅ ${productCount.toLocaleString()} ürün bulundu</strong></div>
+                    <button type="button" class="btn btn-sm btn-outline-light" onclick="showAllProductsDetail()">
+                        <i class="fas fa-list"></i> Tüm Ürünleri Gör
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        if (whData.status === 'success' && whData.warehouses && whData.warehouses.length > 0) {
+            const warehouses = whData.warehouses.sort((a, b) => (b.total_stock || 0) - (a.total_stock || 0));
+            
+            html += '<h6 class="mb-3">📍 Lokasyon Seçin (Zorunlu):</h6>';
+            html += '<div class="list-group mb-3">';
+            
+            warehouses.forEach((wh, idx) => {
+                const code = wh.code || wh.id || 'UNKNOWN';
+                const name = wh.name || code;
+                const stock = wh.total_stock || 0;
+                const skuCount = wh.product_count || 0;
+                const isHighest = idx === 0;
+                const isSelected = idx === 0;
+                
+                html += `
+                    <div class="list-group-item ${isSelected ? 'list-group-item-success' : ''}" id="loc-item-${code}">
+                        <div class="d-flex align-items-center">
+                            <div class="form-check flex-grow-1">
+                                <input class="form-check-input" type="radio" name="selectedLocation" 
+                                       id="loc-${code}" value="${code}" ${isSelected ? 'checked' : ''}
+                                       onchange="selectLocation('${code}')">
+                                <label class="form-check-label" for="loc-${code}">
+                                    <strong>${name}</strong>
+                                    <small class="text-muted">(${code})</small>
+                                </label>
+                            </div>
+                            <div class="d-flex align-items-center gap-2">
+                                ${isHighest ? '<span class="badge bg-success">EN YÜKSEK STOK</span>' : ''}
+                                <span class="badge bg-primary">${stock.toLocaleString()} adet</span>
+                                <span class="badge bg-secondary">${skuCount.toLocaleString()} SKU</span>
+                                <button type="button" class="btn btn-sm btn-outline-info" 
+                                        onclick="showStockDetail('${code}', '${name}')" title="Stok Detayları">
+                                    <i class="fas fa-info-circle"></i>
+                                </button>
+                                <button type="button" class="btn btn-sm btn-warning arbitraj-btn" 
+                                        id="arbitraj-btn-${code}"
+                                        onclick="showArbitrajModal('${code}', '${name}')"
+                                        title="Fiyat Ayarı" style="${isSelected ? '' : 'display:none;'}">
+                                    <i class="fas fa-tags"></i> Fiyat Ayarı
+                                </button>
+                            </div>
+                        </div>
+                        <div class="arbitraj-indicator mt-2" id="arbitraj-indicator-${code}" style="display:none;">
+                            <small class="text-warning">
+                                <i class="fas fa-calculator"></i> <span id="arbitraj-summary-${code}"></span>
+                            </small>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            html += '</div>';
+            
+            // Auto-select highest stock
+            if (warehouses.length > 0) {
+                selectedLocation = warehouses[0].code || warehouses[0].id;
+            }
+        } else {
+            html += '<div class="alert alert-warning">Lokasyon bilgisi alınamadı</div>';
+        }
+        
+        container.innerHTML = html;
+        document.getElementById('filtersSummary').style.display = 'block';
+        updateSummary();
+        updateButtons();
+        
+    } catch (error) {
+        container.innerHTML = `<div class="alert alert-danger">Hata: ${error.message}</div>`;
+        console.error('Preview error:', error);
+    }
+}
+
+// ==================== STOCK DETAIL MODAL ====================
+async function showStockDetail(locationCode, locationName) {
+    const modal = new bootstrap.Modal(document.getElementById('stockDetailModal'));
+    const modalBody = document.getElementById('stockDetailModalBody');
+    const modalTitle = document.getElementById('stockDetailModalTitle');
+    const modalSummary = document.getElementById('stockDetailSummary');
+    
+    modalTitle.innerHTML = `<i class="fas fa-boxes"></i> ${locationName} (${locationCode}) - Stok Detayları`;
+    modalBody.innerHTML = '<div class="text-center py-4"><div class="spinner-border"></div><p class="mt-2">Yükleniyor...</p></div>';
+    modalSummary.innerHTML = '';
+    
+    modal.show();
+    
+    try {
+        const response = await fetch('/api/preview', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 sync_options: {
                     filter_categories: selectedCategories,
                     filter_styles: selectedStyles,
-                    filter_brands: selectedBrands
+                    filter_brands: selectedBrands,
+                    filter_warehouses: [locationCode]
                 }
             })
         });
-        const countData = await countResponse.json();
-        console.log('Product count response:', countData);
         
-        // Get warehouses
-        const whResponse = await fetch('/api/warehouses', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({})
-        });
-        const whData = await whResponse.json();
-        console.log('Warehouses response:', whData);
+        const data = await response.json();
         
-        let html = `<div class="alert alert-success"><strong>${countData.count || 0}</strong> ürün bulundu</div>`;
-        
-        if (whData.status === 'success' && whData.warehouses) {
-            // API returns total_stock (snake_case), sort by it
-            const warehouses = whData.warehouses.sort((a, b) => (b.total_stock || 0) - (a.total_stock || 0));
-            
-            html += '<h6 class="mt-3">📍 Lokasyon Seçin (Zorunlu):</h6>';
-            html += warehouses.map((wh, idx) => `
-                <div class="location-item ${idx === 0 ? 'selected' : ''}" onclick="selectLocation('${wh.code || wh.id}', this)">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <input type="radio" name="location" value="${wh.code || wh.id}" ${idx === 0 ? 'checked' : ''}>
-                            <strong class="ms-2">${wh.name}</strong>
-                            ${idx === 0 ? '<span class="badge bg-success ms-2">En Yüksek Stok</span>' : ''}
-                        </div>
-                        <span class="badge bg-light text-dark">${(wh.total_stock || 0).toLocaleString()} adet</span>
-                    </div>
-                </div>
-            `).join('');
-            
-            // Auto-select highest stock warehouse
-            if (warehouses.length > 0) {
-                selectedLocation = warehouses[0].code || warehouses[0].id;
-                updateButtons();
-            }
+        if (data.status === 'error') {
+            modalBody.innerHTML = `<div class="alert alert-danger">${data.message || 'Hata'}</div>`;
+            return;
         }
         
-        container.innerHTML = html;
-        document.getElementById('filtersSummary').style.display = 'block';
-        updateSummary();
+        const products = data.products || [];
+        previewProducts = products; // Cache
+        renderStockDetailTable(products, modalBody, modalSummary);
         
     } catch (error) {
-        container.innerHTML = `<div class="alert alert-danger">Hata: ${error.message}</div>`;
+        modalBody.innerHTML = `<div class="alert alert-danger">Hata: ${error.message}</div>`;
     }
 }
 
-// Toggle item selection
+function showAllProductsDetail() {
+    const modal = new bootstrap.Modal(document.getElementById('stockDetailModal'));
+    const modalBody = document.getElementById('stockDetailModalBody');
+    const modalTitle = document.getElementById('stockDetailModalTitle');
+    const modalSummary = document.getElementById('stockDetailSummary');
+    
+    modalTitle.innerHTML = '<i class="fas fa-boxes"></i> Tüm Filtrelenmiş Ürünler';
+    
+    if (!previewProducts || previewProducts.length === 0) {
+        modalBody.innerHTML = '<div class="alert alert-warning">Önce bir lokasyonun stok detaylarını görüntüleyin.</div>';
+        modal.show();
+        return;
+    }
+    
+    renderStockDetailTable(previewProducts, modalBody, modalSummary);
+    modal.show();
+}
+
+function renderStockDetailTable(products, container, summaryContainer) {
+    if (!products || products.length === 0) {
+        container.innerHTML = '<div class="alert alert-warning">Ürün bulunamadı.</div>';
+        summaryContainer.innerHTML = '';
+        return;
+    }
+    
+    // Group by style
+    const styleGroups = {};
+    let totalStock = 0;
+    let totalSKUs = 0;
+    
+    products.forEach(p => {
+        const styleId = p.styleID || 'unknown';
+        const styleName = `${p.brandName || ''} ${p.styleName || ''}`.trim() || 'Bilinmeyen';
+        
+        if (!styleGroups[styleId]) {
+            styleGroups[styleId] = { styleId, styleName, products: [] };
+        }
+        styleGroups[styleId].products.push(p);
+        totalStock += (p.qty || 0);
+        totalSKUs++;
+    });
+    
+    let html = `
+        <div class="mb-3">
+            <input type="text" class="form-control" id="stockSearchInput" 
+                   placeholder="🔍 SKU, Renk veya Beden ara..." onkeyup="filterStockTable()">
+        </div>
+        <div class="stock-table-container">
+            <table class="table table-sm table-hover table-striped" id="stockDetailTable">
+                <thead class="table-dark">
+                    <tr>
+                        <th>SKU</th>
+                        <th>Ürün</th>
+                        <th>Renk</th>
+                        <th>Beden</th>
+                        <th class="text-end">Stok</th>
+                        <th class="text-end">Fiyat</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+    
+    const sortedStyles = Object.values(styleGroups).sort((a, b) => a.styleName.localeCompare(b.styleName));
+    
+    sortedStyles.forEach(style => {
+        const styleStock = style.products.reduce((sum, p) => sum + (p.qty || 0), 0);
+        html += `
+            <tr class="style-header">
+                <td colspan="4"><strong>${style.styleName}</strong> <small>(ID: ${style.styleId})</small></td>
+                <td class="text-end"><strong>${styleStock.toLocaleString()}</strong></td>
+                <td></td>
+            </tr>
+        `;
+        
+        const sortedProducts = style.products.sort((a, b) => {
+            const colorCmp = (a.colorName || '').localeCompare(b.colorName || '');
+            return colorCmp !== 0 ? colorCmp : (a.sizeName || '').localeCompare(b.sizeName || '');
+        });
+        
+        sortedProducts.forEach(p => {
+            const qty = p.qty || 0;
+            const price = p.customerPrice || p.piecePrice || 0;
+            const stockClass = qty > 100 ? 'stock-high' : qty > 0 ? 'stock-medium' : 'stock-low';
+            
+            html += `
+                <tr data-sku="${p.sku || ''}" data-color="${(p.colorName || '').toLowerCase()}" data-size="${(p.sizeName || '').toLowerCase()}">
+                    <td><code>${p.sku || '-'}</code></td>
+                    <td class="text-truncate" style="max-width: 150px;">${style.styleName}</td>
+                    <td>${p.colorName || '-'}</td>
+                    <td>${p.sizeName || '-'}</td>
+                    <td class="text-end ${stockClass}">${qty.toLocaleString()}</td>
+                    <td class="text-end">$${parseFloat(price).toFixed(2)}</td>
+                </tr>
+            `;
+        });
+    });
+    
+    html += '</tbody></table></div>';
+    container.innerHTML = html;
+    
+    summaryContainer.innerHTML = `
+        <span class="badge bg-primary me-2">${totalSKUs.toLocaleString()} SKU</span>
+        <span class="badge bg-success me-2">${totalStock.toLocaleString()} Toplam Stok</span>
+        <span class="badge bg-info">${Object.keys(styleGroups).length} Stil</span>
+    `;
+}
+
+function filterStockTable() {
+    const filter = (document.getElementById('stockSearchInput')?.value || '').toLowerCase();
+    const rows = document.querySelectorAll('#stockDetailTable tbody tr');
+    
+    rows.forEach(row => {
+        if (row.classList.contains('style-header')) {
+            row.style.display = '';
+            return;
+        }
+        
+        const sku = row.getAttribute('data-sku') || '';
+        const color = row.getAttribute('data-color') || '';
+        const size = row.getAttribute('data-size') || '';
+        const text = row.textContent.toLowerCase();
+        
+        row.style.display = (filter === '' || sku.includes(filter) || color.includes(filter) || size.includes(filter) || text.includes(filter)) ? '' : 'none';
+    });
+}
+
+// ==================== ARBITRAJ MODAL ====================
+function showArbitrajModal(locationCode, locationName) {
+    document.getElementById('arbitrajLocationName').textContent = `${locationName} (${locationCode})`;
+    
+    // Load current settings
+    document.getElementById('arbitrajEnabled').checked = arbitrajSettings.enabled;
+    document.getElementById('markupPercent').value = arbitrajSettings.markupPercent;
+    document.getElementById('fixedPrice').value = arbitrajSettings.fixedPrice || '';
+    document.getElementById('minimumPrice').value = arbitrajSettings.minimumPrice || '';
+    
+    // Set pricing mode
+    if (arbitrajSettings.fixedPrice !== null) {
+        document.getElementById('modeFixed').checked = true;
+        document.getElementById('markupSettings').style.display = 'none';
+        document.getElementById('fixedSettings').style.display = 'block';
+    } else {
+        document.getElementById('modeMarkup').checked = true;
+        document.getElementById('markupSettings').style.display = 'block';
+        document.getElementById('fixedSettings').style.display = 'none';
+    }
+    
+    // Set rounding
+    const roundingRadio = document.querySelector(`input[name="rounding"][value="${arbitrajSettings.roundingType}"]`);
+    if (roundingRadio) roundingRadio.checked = true;
+    
+    updateMarkupPreview();
+    
+    const modal = new bootstrap.Modal(document.getElementById('arbitrajModal'));
+    modal.show();
+}
+
+function saveArbitrajSettings() {
+    arbitrajSettings.enabled = document.getElementById('arbitrajEnabled').checked;
+    arbitrajSettings.markupPercent = parseFloat(document.getElementById('markupPercent').value) || 0;
+    arbitrajSettings.roundingType = document.querySelector('input[name="rounding"]:checked')?.value || 'none';
+    
+    const pricingMode = document.querySelector('input[name="pricingMode"]:checked')?.value;
+    if (pricingMode === 'fixed') {
+        arbitrajSettings.fixedPrice = parseFloat(document.getElementById('fixedPrice').value) || null;
+    } else {
+        arbitrajSettings.fixedPrice = null;
+    }
+    
+    const minPrice = document.getElementById('minimumPrice').value;
+    arbitrajSettings.minimumPrice = minPrice ? parseFloat(minPrice) : null;
+    
+    console.log('Arbitraj saved:', arbitrajSettings);
+    
+    updateArbitrajIndicator();
+    bootstrap.Modal.getInstance(document.getElementById('arbitrajModal')).hide();
+    
+    // Toast notification
+    showToast('Fiyat arbitrajı ayarları kaydedildi!');
+}
+
+function updateArbitrajIndicator() {
+    if (!selectedLocation) return;
+    
+    const indicator = document.getElementById(`arbitraj-indicator-${selectedLocation}`);
+    const summary = document.getElementById(`arbitraj-summary-${selectedLocation}`);
+    const btn = document.getElementById(`arbitraj-btn-${selectedLocation}`);
+    
+    if (arbitrajSettings.enabled) {
+        let summaryText = '';
+        if (arbitrajSettings.fixedPrice !== null) {
+            summaryText = `Sabit: $${arbitrajSettings.fixedPrice.toFixed(2)}`;
+        } else {
+            summaryText = `+%${arbitrajSettings.markupPercent} kar`;
+        }
+        
+        if (arbitrajSettings.roundingType !== 'none') {
+            summaryText += ` | .${arbitrajSettings.roundingType}`;
+        }
+        if (arbitrajSettings.minimumPrice) {
+            summaryText += ` | Min: $${arbitrajSettings.minimumPrice.toFixed(2)}`;
+        }
+        
+        if (indicator) {
+            indicator.style.display = 'block';
+            summary.textContent = summaryText;
+        }
+        if (btn) {
+            btn.classList.add('arbitraj-btn-active');
+            btn.innerHTML = '<i class="fas fa-check"></i> Fiyat Ayarlı';
+        }
+    } else {
+        if (indicator) indicator.style.display = 'none';
+        if (btn) {
+            btn.classList.remove('arbitraj-btn-active');
+            btn.innerHTML = '<i class="fas fa-tags"></i> Fiyat Ayarı';
+        }
+    }
+}
+
+function updateMarkupPreview() {
+    const markup = parseFloat(document.getElementById('markupPercent').value) || 0;
+    const rounding = document.querySelector('input[name="rounding"]:checked')?.value || 'none';
+    
+    let price = 10 * (1 + markup / 100);
+    price = applyRounding(price, rounding);
+    
+    document.getElementById('markupPreview').textContent = `$${price.toFixed(2)}`;
+}
+
+function applyRounding(price, type) {
+    switch (type) {
+        case '99': return Math.floor(price) + 0.99;
+        case '90': return Math.floor(price) + 0.90;
+        case '00': return Math.ceil(price);
+        default: return price;
+    }
+}
+
+// Setup arbitraj modal listeners
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('input[name="pricingMode"]').forEach(radio => {
+        radio.addEventListener('change', function() {
+            document.getElementById('markupSettings').style.display = this.value === 'markup' ? 'block' : 'none';
+            document.getElementById('fixedSettings').style.display = this.value === 'fixed' ? 'block' : 'none';
+        });
+    });
+    
+    document.getElementById('markupPercent')?.addEventListener('input', updateMarkupPreview);
+    document.querySelectorAll('input[name="rounding"]').forEach(r => r.addEventListener('change', updateMarkupPreview));
+});
+
+// ==================== LOCATION SELECTION ====================
+function selectLocation(code) {
+    selectedLocation = code;
+    console.log('Selected location:', code);
+    
+    // Update styling
+    document.querySelectorAll('.list-group-item').forEach(item => {
+        item.classList.remove('list-group-item-success');
+    });
+    const selectedItem = document.getElementById(`loc-item-${code}`);
+    if (selectedItem) selectedItem.classList.add('list-group-item-success');
+    
+    // Show/hide arbitraj buttons
+    document.querySelectorAll('.arbitraj-btn').forEach(btn => btn.style.display = 'none');
+    const arbitrajBtn = document.getElementById(`arbitraj-btn-${code}`);
+    if (arbitrajBtn) arbitrajBtn.style.display = '';
+    
+    updateButtons();
+    updateSummary();
+}
+
+// ==================== COMMON FUNCTIONS ====================
 function toggleItem(type, id, element) {
     let array;
     if (type === 'categories') array = selectedCategories;
@@ -441,16 +965,14 @@ function toggleItem(type, id, element) {
     updateSummary();
 }
 
-// Toggle all
 function toggleAll(type) {
     const checkAll = document.getElementById(`selectAll${type.charAt(0).toUpperCase() + type.slice(1)}`).checked;
     const container = document.getElementById(`${type}List`);
     const items = container.querySelectorAll('.filter-checkbox');
     
-    let array;
-    if (type === 'categories') { array = selectedCategories; selectedCategories = []; }
-    else if (type === 'styles') { array = selectedStyles; selectedStyles = []; }
-    else if (type === 'brands') { array = selectedBrands; selectedBrands = []; }
+    if (type === 'categories') selectedCategories = [];
+    else if (type === 'styles') selectedStyles = [];
+    else if (type === 'brands') selectedBrands = [];
     
     items.forEach(item => {
         const id = parseInt(item.dataset.id);
@@ -469,17 +991,6 @@ function toggleAll(type) {
     updateSummary();
 }
 
-// Select location
-function selectLocation(id, element) {
-    document.querySelectorAll('.location-item').forEach(el => el.classList.remove('selected'));
-    element.classList.add('selected');
-    element.querySelector('input').checked = true;
-    selectedLocation = id;
-    updateButtons();
-    updateSummary();
-}
-
-// Filter list
 function filterList(containerId, query) {
     const container = document.getElementById(containerId);
     const items = container.querySelectorAll('.filter-checkbox');
@@ -491,7 +1002,6 @@ function filterList(containerId, query) {
     });
 }
 
-// Update navigation buttons
 function updateButtons() {
     document.getElementById('step1NextBtn').disabled = selectedCategories.length === 0;
     document.getElementById('step2NextBtn').disabled = selectedStyles.length === 0;
@@ -499,7 +1009,6 @@ function updateButtons() {
     document.getElementById('saveStartBtn').disabled = !selectedLocation;
 }
 
-// Update summary
 function updateSummary() {
     document.getElementById('summaryCategories').textContent = selectedCategories.length;
     document.getElementById('summaryStyles').textContent = selectedStyles.length;
@@ -507,16 +1016,16 @@ function updateSummary() {
     document.getElementById('summaryLocation').textContent = selectedLocation || '-';
 }
 
-// Reset all filters
 function resetAllFilters() {
+    if (!confirm('Tüm filtreleri sıfırlamak istediğinizden emin misiniz?')) return;
+    
     selectedCategories = [];
     selectedStyles = [];
     selectedBrands = [];
     selectedLocation = null;
+    arbitrajSettings = { enabled: false, markupPercent: 100, roundingType: 'none', fixedPrice: null, minimumPrice: null };
     
-    ['step2-tab', 'step3-tab', 'step4-tab'].forEach(id => {
-        document.getElementById(id).disabled = true;
-    });
+    ['step2-tab', 'step3-tab', 'step4-tab'].forEach(id => document.getElementById(id).disabled = true);
     
     goToStep(1);
     document.getElementById('categoriesList').innerHTML = '<p class="text-muted text-center">Kategorileri yüklemek için butona tıklayın</p>';
@@ -527,7 +1036,7 @@ function resetAllFilters() {
     updateButtons();
 }
 
-// Save and start sync
+// ==================== SAVE AND START ====================
 async function saveAndStartSync() {
     if (!selectedLocation) {
         alert('Lütfen bir lokasyon seçin!');
@@ -538,7 +1047,8 @@ async function saveAndStartSync() {
         filter_categories: selectedCategories,
         filter_styles: selectedStyles,
         filter_brands: selectedBrands,
-        filter_warehouses: [selectedLocation]
+        filter_warehouses: [selectedLocation],
+        arbitraj_settings: arbitrajSettings.enabled ? arbitrajSettings : null
     };
     
     try {
@@ -548,11 +1058,20 @@ async function saveAndStartSync() {
             body: JSON.stringify({ sync_options: syncOptions })
         });
         
-        // Redirect to sync page with autostart
         window.location.href = '/sync?autostart=1';
     } catch (error) {
         alert('Kaydetme hatası: ' + error.message);
     }
+}
+
+// Toast notification
+function showToast(message) {
+    const toast = document.createElement('div');
+    toast.className = 'alert alert-success position-fixed';
+    toast.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 250px;';
+    toast.innerHTML = `${message} <button type="button" class="btn-close" onclick="this.parentElement.remove()"></button>`;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 3000);
 }
 
 // Load saved filters on page load
@@ -566,6 +1085,10 @@ document.addEventListener('DOMContentLoaded', async function() {
             selectedStyles = data.sync_options.filter_styles || [];
             selectedBrands = data.sync_options.filter_brands || [];
             selectedLocation = data.sync_options.filter_warehouses?.[0] || null;
+            
+            if (data.sync_options.arbitraj_settings) {
+                arbitrajSettings = data.sync_options.arbitraj_settings;
+            }
             
             if (selectedCategories.length > 0 || selectedStyles.length > 0 || selectedBrands.length > 0) {
                 document.getElementById('filtersSummary').style.display = 'block';
