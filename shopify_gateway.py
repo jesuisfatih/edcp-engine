@@ -66,30 +66,18 @@ class ShopifyGateway:
             print(f"   ⚠️ Could not check/delete existing products: {e}")
             # Continue anyway
         
-        # Build REST API payload with deduplication
+        # Build REST API payload with SEQUENTIAL NUMBERING
+        # GUARANTEES 100% unique variants
         variants_payload = []
-        seen_options = set()  # Track option combinations to avoid duplicates
         
-        for v in style_part.variants:
-            # CRITICAL: Case-insensitive and whitespace-safe deduplication
-            option_key = (
-                v.color_name.strip().lower() if v.color_name else '',
-                v.size_name.strip().lower() if v.size_name else ''
-            )
-            
-            # Skip duplicate option combinations
-            if option_key in seen_options:
-                print(f"   ⚠️ Skipping duplicate variant: {v.sku} ({v.color_name} / {v.size_name})")
-                continue
-            
-            seen_options.add(option_key)
-            
-            # CRITICAL: Make option1 unique by adding SKU prefix
-            # This GUARANTEES no duplicate variants
-            unique_color = f"{v.color_name}-{v.sku[:8]}" if v.sku else v.color_name
+        for idx, v in enumerate(style_part.variants, start=1):
+            # CRITICAL: Each variant gets sequential number
+            # option1 = "Color NUMBER" (e.g. "Black 1", "White 2")
+            # option2 = "Size" (e.g. "S", "M", "L")
+            unique_color = f"{v.color_name} {idx}"  # Black 1, Black 2, White 3
             
             variant = {
-                'option1': unique_color,  # Color-SKU (unique)
+                'option1': unique_color,  # Color + sequential number
                 'option2': v.size_name,   # Size
                 'sku': v.sku,
                 'price': str(v.price),
