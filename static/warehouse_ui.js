@@ -2,7 +2,7 @@
 
 let selectedWarehouses = [];
 let warehousesData = [];
-let previewProducts = []; // Store preview products for stock detail modal
+let warehousePreviewProducts = []; // Store preview products for stock detail modal
 
 // Immediately export to window
 if (typeof window !== 'undefined') {
@@ -189,8 +189,8 @@ async function loadPreviewWithLocations() {
         const warehouses = warehouseData.warehouses || [];
         
         // Store products for stock detail modal
-        previewProducts = previewData.products || [];
-        console.log('Preview products stored:', previewProducts.length);
+        warehousePreviewProducts = previewData.products || [];
+        console.log('Preview products stored:', warehousePreviewProducts.length);
         
         displayPreviewWithLocations(productCount, warehouses, previewProducts);
         
@@ -376,13 +376,13 @@ function showAllProductsDetail() {
     
     modalTitle.innerHTML = `<i class="fas fa-boxes"></i> Tüm Filtrelenmiş Ürünler`;
     
-    if (!previewProducts || previewProducts.length === 0) {
+    if (!warehousePreviewProducts || warehousePreviewProducts.length === 0) {
         modalBody.innerHTML = '<div class="alert alert-warning">Ürün bulunamadı. Önce önizleme yapın.</div>';
         modal.show();
         return;
     }
     
-    renderStockDetailTable(previewProducts, modalBody, modalSummary, 'ALL');
+    renderStockDetailTable(warehousePreviewProducts, modalBody, modalSummary, 'ALL');
     modal.show();
 }
 
