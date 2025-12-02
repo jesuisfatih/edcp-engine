@@ -2,9 +2,62 @@
 
 {% block title %}API Ayarları{% endblock %}
 
+{% block extra_css %}
+<style>
+    .password-toggle {
+        position: absolute;
+        right: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+        cursor: pointer;
+        color: #6c757d;
+        z-index: 10;
+    }
+    .password-toggle:hover { color: #333; }
+    .input-group-password {
+        position: relative;
+    }
+    .input-group-password input {
+        padding-right: 40px;
+    }
+    .connection-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 12px;
+        border-radius: 20px;
+        font-size: 0.85rem;
+    }
+    .connection-badge.success { background: #d4edda; color: #155724; }
+    .connection-badge.error { background: #f8d7da; color: #721c24; }
+    .connection-badge.pending { background: #fff3cd; color: #856404; }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="page-header">
     <h2><i class="fas fa-cog"></i> API Ayarları</h2>
+</div>
+
+<!-- Quick Status -->
+<div class="alert alert-secondary mb-4">
+    <div class="row align-items-center">
+        <div class="col-md-4">
+            <span class="connection-badge pending" id="ssConnectionBadge">
+                <i class="fas fa-circle"></i> S&S: Kontrol edilmedi
+            </span>
+        </div>
+        <div class="col-md-4">
+            <span class="connection-badge pending" id="shopifyConnectionBadge">
+                <i class="fas fa-circle"></i> Shopify: Kontrol edilmedi
+            </span>
+        </div>
+        <div class="col-md-4 text-end">
+            <button class="btn btn-sm btn-primary" onclick="testAllConnections()">
+                <i class="fas fa-plug"></i> Tüm Bağlantıları Test Et
+            </button>
+        </div>
+    </div>
 </div>
 
 <div class="row">
@@ -17,14 +70,21 @@
             <div class="card-body">
                 <form id="ssConfigForm">
                     <div class="mb-3">
-                        <label class="form-label">Account Number</label>
-                        <input type="text" class="form-control" id="ss_account_number" placeholder="Hesap numarası">
+                        <label class="form-label">Account Number <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="ss_account_number" placeholder="Hesap numarası" required>
+                        <small class="text-muted">S&S'den aldığınız hesap numarası</small>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">API Key</label>
-                        <input type="password" class="form-control" id="ss_api_key" placeholder="API anahtarı">
+                        <label class="form-label">API Key <span class="text-danger">*</span></label>
+                        <div class="input-group-password">
+                            <input type="password" class="form-control" id="ss_api_key" placeholder="API anahtarı" required>
+                            <span class="password-toggle" onclick="togglePassword('ss_api_key', this)">
+                                <i class="fas fa-eye"></i>
+                            </span>
+                        </div>
+                        <small class="text-muted">S&S API anahtarınız</small>
                     </div>
-                    <button type="button" class="btn btn-primary" onclick="testSSConnection()">
+                    <button type="button" class="btn btn-primary w-100" onclick="testSSConnection()">
                         <i class="fas fa-plug"></i> Bağlantıyı Test Et
                     </button>
                 </form>
@@ -42,14 +102,21 @@
             <div class="card-body">
                 <form id="shopifyConfigForm">
                     <div class="mb-3">
-                        <label class="form-label">Shop Domain</label>
-                        <input type="text" class="form-control" id="shopify_domain" placeholder="your-store.myshopify.com">
+                        <label class="form-label">Shop Domain <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="shopify_domain" placeholder="your-store.myshopify.com" required>
+                        <small class="text-muted">Shopify mağaza adresiniz (.myshopify.com ile)</small>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">Access Token</label>
-                        <input type="password" class="form-control" id="shopify_token" placeholder="shpat_xxxxx">
+                        <label class="form-label">Access Token <span class="text-danger">*</span></label>
+                        <div class="input-group-password">
+                            <input type="password" class="form-control" id="shopify_token" placeholder="shpat_xxxxx" required>
+                            <span class="password-toggle" onclick="togglePassword('shopify_token', this)">
+                                <i class="fas fa-eye"></i>
+                            </span>
+                        </div>
+                        <small class="text-muted">Shopify Admin API access token</small>
                     </div>
-                    <button type="button" class="btn btn-success" onclick="testShopifyConnection()">
+                    <button type="button" class="btn btn-success w-100" onclick="testShopifyConnection()">
                         <i class="fas fa-plug"></i> Bağlantıyı Test Et
                     </button>
                 </form>
@@ -59,12 +126,50 @@
     </div>
 </div>
 
+<!-- Connection Results Detail -->
+<div class="card mt-4" id="connectionResultsCard" style="display: none;">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="fas fa-info-circle"></i> Bağlantı Detayları</h5>
+    </div>
+    <div class="card-body" id="connectionResultsBody">
+        <!-- Results will be shown here -->
+    </div>
+</div>
+
 <!-- Save Button -->
 <div class="card mt-4">
     <div class="card-body text-center">
-        <button type="button" class="btn btn-accent btn-lg" onclick="saveAllConfig()">
+        <button type="button" class="btn btn-accent btn-lg" onclick="saveAllConfig()" id="saveConfigBtn">
             <i class="fas fa-save"></i> Tüm Ayarları Kaydet
         </button>
+        <p class="text-muted mt-2 mb-0">Ayarları kaydetmeden önce bağlantıları test etmeniz önerilir</p>
+    </div>
+</div>
+
+<!-- Help Section -->
+<div class="card mt-4">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="fas fa-question-circle"></i> Yardım</h5>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-6">
+                <h6>S&S Activewear API Bilgileri</h6>
+                <ul class="small">
+                    <li>API bilgilerinizi <a href="https://www.ssactivewear.com/" target="_blank">S&S Activewear</a> hesabınızdan alabilirsiniz</li>
+                    <li>Account Number genellikle müşteri numaranızdır</li>
+                    <li>API Key hesap ayarlarından oluşturulabilir</li>
+                </ul>
+            </div>
+            <div class="col-md-6">
+                <h6>Shopify API Bilgileri</h6>
+                <ul class="small">
+                    <li>Shopify Admin → Settings → Apps and sales channels → Develop apps</li>
+                    <li>Yeni app oluşturun ve Admin API access token alın</li>
+                    <li>Gerekli izinler: products, inventory, collections (read/write)</li>
+                </ul>
+            </div>
+        </div>
     </div>
 </div>
 {% endblock %}
@@ -75,12 +180,24 @@ document.addEventListener('DOMContentLoaded', function() {
     loadConfig();
 });
 
+function togglePassword(inputId, toggleEl) {
+    const input = document.getElementById(inputId);
+    const icon = toggleEl.querySelector('i');
+    
+    if (input.type === 'password') {
+        input.type = 'text';
+        icon.className = 'fas fa-eye-slash';
+    } else {
+        input.type = 'password';
+        icon.className = 'fas fa-eye';
+    }
+}
+
 async function loadConfig() {
     try {
         const response = await fetch('/api/config');
         const data = await response.json();
         
-        // API returns ss_config and shopify_config directly
         if (data.ss_config) {
             document.getElementById('ss_account_number').value = data.ss_config.account_number || '';
             document.getElementById('ss_api_key').value = data.ss_config.api_key || '';
@@ -89,15 +206,24 @@ async function loadConfig() {
             document.getElementById('shopify_domain').value = data.shopify_config.shop_domain || '';
             document.getElementById('shopify_token').value = data.shopify_config.access_token || '';
         }
-        console.log('Config loaded:', data);
+        console.log('Config loaded');
     } catch (error) {
         console.error('Error loading config:', error);
     }
 }
 
+async function testAllConnections() {
+    await testSSConnection();
+    await testShopifyConnection();
+}
+
 async function testSSConnection() {
     const resultDiv = document.getElementById('ssTestResult');
+    const badge = document.getElementById('ssConnectionBadge');
+    
     resultDiv.innerHTML = '<div class="spinner-border spinner-border-sm"></div> Test ediliyor...';
+    badge.className = 'connection-badge pending';
+    badge.innerHTML = '<i class="fas fa-spinner fa-spin"></i> S&S: Test ediliyor...';
     
     try {
         const response = await fetch('/api/test-connection', {
@@ -111,19 +237,31 @@ async function testSSConnection() {
         const data = await response.json();
         
         if (data.ss) {
-            resultDiv.innerHTML = '<div class="alert alert-success"><i class="fas fa-check"></i> S&S Bağlantı başarılı!</div>';
+            resultDiv.innerHTML = '<div class="alert alert-success mb-0"><i class="fas fa-check-circle"></i> S&S Bağlantı başarılı!</div>';
+            badge.className = 'connection-badge success';
+            badge.innerHTML = '<i class="fas fa-check-circle"></i> S&S: Bağlı';
         } else {
             const msg = data.messages ? data.messages.find(m => m.includes('S&S')) || 'Bağlantı hatası' : 'Bağlantı hatası';
-            resultDiv.innerHTML = `<div class="alert alert-danger"><i class="fas fa-times"></i> ${msg}</div>`;
+            resultDiv.innerHTML = `<div class="alert alert-danger mb-0"><i class="fas fa-times-circle"></i> ${msg}</div>`;
+            badge.className = 'connection-badge error';
+            badge.innerHTML = '<i class="fas fa-times-circle"></i> S&S: Hata';
         }
+        
+        showConnectionResults(data);
     } catch (error) {
-        resultDiv.innerHTML = `<div class="alert alert-danger"><i class="fas fa-times"></i> Bağlantı hatası: ${error.message}</div>`;
+        resultDiv.innerHTML = `<div class="alert alert-danger mb-0"><i class="fas fa-times-circle"></i> Bağlantı hatası: ${error.message}</div>`;
+        badge.className = 'connection-badge error';
+        badge.innerHTML = '<i class="fas fa-times-circle"></i> S&S: Hata';
     }
 }
 
 async function testShopifyConnection() {
     const resultDiv = document.getElementById('shopifyTestResult');
+    const badge = document.getElementById('shopifyConnectionBadge');
+    
     resultDiv.innerHTML = '<div class="spinner-border spinner-border-sm"></div> Test ediliyor...';
+    badge.className = 'connection-badge pending';
+    badge.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Shopify: Test ediliyor...';
     
     try {
         const response = await fetch('/api/test-connection', {
@@ -137,17 +275,47 @@ async function testShopifyConnection() {
         const data = await response.json();
         
         if (data.shopify) {
-            resultDiv.innerHTML = '<div class="alert alert-success"><i class="fas fa-check"></i> Shopify Bağlantı başarılı!</div>';
+            resultDiv.innerHTML = '<div class="alert alert-success mb-0"><i class="fas fa-check-circle"></i> Shopify Bağlantı başarılı!</div>';
+            badge.className = 'connection-badge success';
+            badge.innerHTML = '<i class="fas fa-check-circle"></i> Shopify: Bağlı';
         } else {
             const msg = data.messages ? data.messages.find(m => m.includes('Shopify')) || 'Bağlantı hatası' : 'Bağlantı hatası';
-            resultDiv.innerHTML = `<div class="alert alert-danger"><i class="fas fa-times"></i> ${msg}</div>`;
+            resultDiv.innerHTML = `<div class="alert alert-danger mb-0"><i class="fas fa-times-circle"></i> ${msg}</div>`;
+            badge.className = 'connection-badge error';
+            badge.innerHTML = '<i class="fas fa-times-circle"></i> Shopify: Hata';
         }
+        
+        showConnectionResults(data);
     } catch (error) {
-        resultDiv.innerHTML = `<div class="alert alert-danger"><i class="fas fa-times"></i> Bağlantı hatası: ${error.message}</div>`;
+        resultDiv.innerHTML = `<div class="alert alert-danger mb-0"><i class="fas fa-times-circle"></i> Bağlantı hatası: ${error.message}</div>`;
+        badge.className = 'connection-badge error';
+        badge.innerHTML = '<i class="fas fa-times-circle"></i> Shopify: Hata';
+    }
+}
+
+function showConnectionResults(data) {
+    const card = document.getElementById('connectionResultsCard');
+    const body = document.getElementById('connectionResultsBody');
+    
+    if (data.messages && data.messages.length > 0) {
+        card.style.display = 'block';
+        body.innerHTML = data.messages.map(msg => {
+            const isSuccess = msg.toLowerCase().includes('success') || msg.toLowerCase().includes('connected');
+            return `<div class="mb-2">
+                <span class="badge ${isSuccess ? 'bg-success' : 'bg-danger'} me-2">
+                    <i class="fas fa-${isSuccess ? 'check' : 'times'}"></i>
+                </span>
+                ${msg}
+            </div>`;
+        }).join('');
     }
 }
 
 async function saveAllConfig() {
+    const btn = document.getElementById('saveConfigBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Kaydediliyor...';
+    
     try {
         const response = await fetch('/api/config', {
             method: 'POST',
@@ -162,14 +330,16 @@ async function saveAllConfig() {
         const data = await response.json();
         
         if (data.status === 'success') {
-            alert('Ayarlar başarıyla kaydedildi!');
+            alert('✅ Ayarlar başarıyla kaydedildi!');
         } else {
-            alert('Hata: ' + data.message);
+            alert('❌ Hata: ' + data.message);
         }
     } catch (error) {
-        alert('Kaydetme hatası: ' + error.message);
+        alert('❌ Kaydetme hatası: ' + error.message);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-save"></i> Tüm Ayarları Kaydet';
     }
 }
 </script>
 {% endblock %}
-

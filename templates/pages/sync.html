@@ -2,9 +2,135 @@
 
 {% block title %}Aktarım{% endblock %}
 
+{% block extra_css %}
+<style>
+    /* Step Indicators */
+    .step-indicators {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 20px;
+        padding: 15px;
+        background: #f8f9fa;
+        border-radius: 10px;
+    }
+    .step-item {
+        flex: 1;
+        text-align: center;
+        padding: 10px;
+        position: relative;
+    }
+    .step-item:not(:last-child)::after {
+        content: '';
+        position: absolute;
+        top: 50%;
+        right: -10%;
+        width: 20%;
+        height: 2px;
+        background: #dee2e6;
+    }
+    .step-item.active .step-icon { background: var(--accent-color); color: white; }
+    .step-item.completed .step-icon { background: #28a745; color: white; }
+    .step-item.completed::after { background: #28a745; }
+    .step-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: #dee2e6;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 5px;
+        font-size: 16px;
+    }
+    .step-label { font-size: 12px; color: #6c757d; }
+    
+    /* Stats Mini Cards */
+    .stat-mini {
+        text-align: center;
+        padding: 15px;
+        border-radius: 8px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+    }
+    .stat-mini h4 { margin: 0; font-size: 1.5rem; }
+    .stat-mini small { opacity: 0.8; }
+    .stat-mini.success { background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); }
+    .stat-mini.warning { background: linear-gradient(135deg, #f2994a 0%, #f2c94c 100%); }
+    .stat-mini.danger { background: linear-gradient(135deg, #eb3349 0%, #f45c43 100%); }
+    
+    /* Current Product */
+    .current-product-card {
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+        color: white;
+        border-radius: 12px;
+        padding: 20px;
+    }
+    .current-product-card h6 { color: rgba(255,255,255,0.7); margin-bottom: 10px; }
+    .current-product-card .product-title { font-size: 1.2rem; font-weight: 600; }
+    .current-product-card .product-sku { color: #69b4ff; font-family: monospace; }
+    
+    /* Created Products */
+    .product-link-item {
+        padding: 12px 15px;
+        border-bottom: 1px solid #f0f0f0;
+        transition: background 0.2s;
+    }
+    .product-link-item:hover { background: #f8f9fa; }
+    .product-link-item:last-child { border-bottom: none; }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="page-header">
     <h2><i class="fas fa-play-circle"></i> Aktarım</h2>
+</div>
+
+<!-- Step Indicators -->
+<div class="step-indicators" id="stepIndicators">
+    <div class="step-item" id="step-fetch">
+        <div class="step-icon"><i class="fas fa-download"></i></div>
+        <div class="step-label">Veri Çekme</div>
+    </div>
+    <div class="step-item" id="step-cache">
+        <div class="step-icon"><i class="fas fa-database"></i></div>
+        <div class="step-label">Önbellek</div>
+    </div>
+    <div class="step-item" id="step-group">
+        <div class="step-icon"><i class="fas fa-layer-group"></i></div>
+        <div class="step-label">Gruplama</div>
+    </div>
+    <div class="step-item" id="step-sync">
+        <div class="step-icon"><i class="fas fa-cloud-upload-alt"></i></div>
+        <div class="step-label">Shopify Sync</div>
+    </div>
+</div>
+
+<!-- Stats Row -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="stat-mini">
+            <h4 id="stat-total">0</h4>
+            <small>Toplam</small>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-mini success">
+            <h4 id="stat-created">0</h4>
+            <small>Oluşturulan</small>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-mini warning">
+            <h4 id="stat-updated">0</h4>
+            <small>Güncellenen</small>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-mini danger">
+            <h4 id="stat-errors">0</h4>
+            <small>Hatalar</small>
+        </div>
+    </div>
 </div>
 
 <!-- Sync Controls -->
@@ -37,8 +163,15 @@
             <div class="progress-bar progress-bar-striped progress-bar-animated" id="progressBar" 
                  role="progressbar" style="width: 0%"></div>
         </div>
-        <div class="mt-2 text-muted" id="currentProduct">-</div>
     </div>
+</div>
+
+<!-- Current Product -->
+<div class="current-product-card mb-4" id="currentProductCard" style="display: none;">
+    <h6><i class="fas fa-spinner fa-spin"></i> Şu An İşleniyor</h6>
+    <div class="product-title" id="currentProductTitle">-</div>
+    <div class="product-sku" id="currentProductSku">SKU: -</div>
+    <div class="mt-2 text-muted small" id="currentProductIndex">-</div>
 </div>
 
 <!-- Console Output -->
@@ -50,11 +183,38 @@
         </button>
     </div>
     <div class="card-body p-0">
-        <div class="console-output" id="consoleOutput">
+        <div class="console-output" id="consoleOutput" style="max-height: 300px;">
             <div class="console-line">
                 <span class="console-prompt">$</span>
                 <span class="console-text">Aktarım başlatıldığında loglar burada görünecek...</span>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- Created Products -->
+<div class="card mt-4" id="createdProductsCard" style="display: none;">
+    <div class="card-header bg-success text-white">
+        <h5 class="mb-0"><i class="fas fa-check-circle"></i> Oluşturulan Ürünler</h5>
+    </div>
+    <div class="card-body p-0" id="createdProductsList">
+        <!-- Products will be listed here -->
+    </div>
+</div>
+
+<!-- Error Log -->
+<div class="card mt-4" id="errorLogCard" style="display: none;">
+    <div class="card-header bg-danger text-white">
+        <h5 class="mb-0"><i class="fas fa-exclamation-triangle"></i> Hatalar</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm mb-0" id="errorLogTable">
+                <thead>
+                    <tr><th>SKU</th><th>Hata</th><th>Zaman</th></tr>
+                </thead>
+                <tbody id="errorLogBody"></tbody>
+            </table>
         </div>
     </div>
 </div>
@@ -72,6 +232,9 @@
             <button class="btn btn-outline-danger" onclick="deleteAllProducts()">
                 <i class="fas fa-trash-alt"></i> Tüm Ürünleri Sil
             </button>
+            <a href="{{ url_for('page_sync_options') }}" class="btn btn-outline-primary">
+                <i class="fas fa-filter"></i> Filtreleri Düzenle
+            </a>
         </div>
     </div>
 </div>
@@ -81,6 +244,7 @@
 <script>
 let syncInterval = null;
 let autoStart = new URLSearchParams(window.location.search).get('autostart');
+let lastLogCount = 0;
 
 document.addEventListener('DOMContentLoaded', function() {
     if (autoStart === '1') {
@@ -93,9 +257,17 @@ async function startSync() {
     document.getElementById('startSyncBtn').style.display = 'none';
     document.getElementById('stopSyncBtn').style.display = 'inline-block';
     document.getElementById('progressCard').style.display = 'block';
+    document.getElementById('currentProductCard').style.display = 'block';
     document.getElementById('syncStatusText').textContent = 'Aktarım Durumu: Çalışıyor...';
     
+    // Reset
+    resetStepIndicators();
+    resetStats();
     clearConsole();
+    document.getElementById('createdProductsCard').style.display = 'none';
+    document.getElementById('errorLogCard').style.display = 'none';
+    lastLogCount = 0;
+    
     addLog('Aktarım başlatılıyor...', 'info');
     
     try {
@@ -107,7 +279,7 @@ async function startSync() {
         const data = await response.json();
         
         if (data.status === 'success') {
-            addLog('Aktarım başladı: ' + data.sync_id, 'success');
+            addLog('Aktarım başladı: ' + (data.sync_id || 'OK'), 'success');
             startPolling();
         } else {
             addLog('Hata: ' + data.message, 'error');
@@ -142,25 +314,32 @@ async function checkSyncStatus() {
         const response = await fetch('/api/sync/status');
         const data = await response.json();
         
-        if (data.status === 'success') {
+        if (data.status === 'success' || data.is_running !== undefined) {
             updateProgress(data);
-            
-            // Update logs
-            if (data.logs && data.logs.length > 0) {
-                const consoleOutput = document.getElementById('consoleOutput');
-                consoleOutput.innerHTML = '';
-                data.logs.forEach(log => addLog(log, 'info', false));
-            }
+            updateStepIndicators(data.step || data.message || '');
+            updateStats(data.stats);
+            updateCurrentProduct(data.current_product);
+            updateLogs(data.logs);
+            updateErrors(data.errors);
             
             if (!data.is_running && syncInterval) {
                 clearInterval(syncInterval);
                 syncInterval = null;
-                resetUI();
+                
+                // Show completion
+                completeAllSteps();
                 
                 if (data.last_sync) {
-                    addLog(`Aktarım tamamlandı: ${data.last_sync.created || 0} oluşturuldu, ${data.last_sync.errors || 0} hata`, 
+                    addLog(`✅ Aktarım tamamlandı: ${data.last_sync.created || 0} oluşturuldu, ${data.last_sync.errors || 0} hata`, 
                            data.last_sync.errors > 0 ? 'warning' : 'success');
                 }
+                
+                // Show created products
+                if (data.created_products && data.created_products.length > 0) {
+                    displayCreatedProducts(data.created_products);
+                }
+                
+                resetUI();
             }
         }
     } catch (error) {
@@ -174,12 +353,119 @@ function updateProgress(data) {
     const total = data.total || 0;
     
     document.getElementById('progressBar').style.width = progress + '%';
-    document.getElementById('progressPercent').textContent = progress + '%';
+    document.getElementById('progressPercent').textContent = Math.round(progress) + '%';
     document.getElementById('progressText').textContent = `${current} / ${total}`;
-    document.getElementById('currentProduct').textContent = data.current_product || '-';
 }
 
-function addLog(message, type = 'info', prepend = true) {
+function updateStats(stats) {
+    if (!stats) return;
+    document.getElementById('stat-total').textContent = stats.total || 0;
+    document.getElementById('stat-created').textContent = stats.created || 0;
+    document.getElementById('stat-updated').textContent = stats.updated || 0;
+    document.getElementById('stat-errors').textContent = stats.errors || 0;
+}
+
+function resetStats() {
+    document.getElementById('stat-total').textContent = '0';
+    document.getElementById('stat-created').textContent = '0';
+    document.getElementById('stat-updated').textContent = '0';
+    document.getElementById('stat-errors').textContent = '0';
+}
+
+function updateCurrentProduct(product) {
+    if (!product) return;
+    document.getElementById('currentProductTitle').textContent = product.title || product.styleName || '-';
+    document.getElementById('currentProductSku').textContent = 'SKU: ' + (product.sku || '-');
+    if (product.index !== undefined && product.total) {
+        document.getElementById('currentProductIndex').textContent = `${product.index + 1} / ${product.total}`;
+    }
+}
+
+function updateStepIndicators(stepOrMessage) {
+    const steps = ['step-fetch', 'step-cache', 'step-group', 'step-sync'];
+    const msg = (stepOrMessage || '').toLowerCase();
+    
+    let activeIndex = -1;
+    if (msg.includes('fetch') || msg.includes('çekil')) activeIndex = 0;
+    else if (msg.includes('cache') || msg.includes('önbellek') || msg.includes('veritabanı')) activeIndex = 1;
+    else if (msg.includes('group') || msg.includes('grupla') || msg.includes('style')) activeIndex = 2;
+    else if (msg.includes('sync') || msg.includes('shopify') || msg.includes('aktarıl') || msg.includes('creat')) activeIndex = 3;
+    
+    steps.forEach((stepId, idx) => {
+        const el = document.getElementById(stepId);
+        el.classList.remove('active', 'completed');
+        if (idx < activeIndex) el.classList.add('completed');
+        else if (idx === activeIndex) el.classList.add('active');
+    });
+}
+
+function completeAllSteps() {
+    ['step-fetch', 'step-cache', 'step-group', 'step-sync'].forEach(id => {
+        document.getElementById(id).classList.remove('active');
+        document.getElementById(id).classList.add('completed');
+    });
+}
+
+function resetStepIndicators() {
+    ['step-fetch', 'step-cache', 'step-group', 'step-sync'].forEach(id => {
+        document.getElementById(id).classList.remove('active', 'completed');
+    });
+}
+
+function updateLogs(logs) {
+    if (!logs || logs.length === 0) return;
+    
+    if (logs.length > lastLogCount) {
+        const newLogs = logs.slice(lastLogCount);
+        newLogs.forEach(log => {
+            const msg = typeof log === 'string' ? log : log.message;
+            const level = typeof log === 'object' ? log.level : 'info';
+            addLog(msg, level);
+        });
+        lastLogCount = logs.length;
+    }
+}
+
+function updateErrors(errors) {
+    if (!errors || errors.length === 0) return;
+    
+    document.getElementById('errorLogCard').style.display = 'block';
+    const tbody = document.getElementById('errorLogBody');
+    tbody.innerHTML = errors.map(err => `
+        <tr>
+            <td><code>${err.sku || '-'}</code></td>
+            <td>${err.error || err.message || '-'}</td>
+            <td>${err.timestamp ? new Date(err.timestamp).toLocaleTimeString() : '-'}</td>
+        </tr>
+    `).join('');
+}
+
+function displayCreatedProducts(products) {
+    const card = document.getElementById('createdProductsCard');
+    const list = document.getElementById('createdProductsList');
+    
+    card.style.display = 'block';
+    list.innerHTML = products.slice(0, 50).map((p, i) => `
+        <div class="product-link-item">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <strong>${i + 1}. ${p.title || 'Ürün'}</strong><br>
+                    <small class="text-muted">ID: ${p.shopify_id || p.id} | Variants: ${p.variants_count || 0}</small>
+                </div>
+                <div>
+                    ${p.product_url ? `<a href="${p.product_url}" target="_blank" class="btn btn-sm btn-primary me-1"><i class="fas fa-external-link-alt"></i></a>` : ''}
+                    ${p.shopify_url ? `<a href="${p.shopify_url}" target="_blank" class="btn btn-sm btn-secondary"><i class="fas fa-cog"></i></a>` : ''}
+                </div>
+            </div>
+        </div>
+    `).join('');
+    
+    if (products.length > 50) {
+        list.innerHTML += `<div class="p-3 text-center text-muted">+${products.length - 50} daha...</div>`;
+    }
+}
+
+function addLog(message, type = 'info') {
     const consoleOutput = document.getElementById('consoleOutput');
     const timestamp = new Date().toLocaleTimeString();
     
@@ -190,25 +476,26 @@ function addLog(message, type = 'info', prepend = true) {
         <span class="console-text">[${timestamp}] ${message}</span>
     `;
     
-    if (prepend) {
-        consoleOutput.insertBefore(logLine, consoleOutput.firstChild);
-    } else {
-        consoleOutput.appendChild(logLine);
-    }
+    consoleOutput.insertBefore(logLine, consoleOutput.firstChild);
+    consoleOutput.scrollTop = 0;
 }
 
 function clearConsole() {
     document.getElementById('consoleOutput').innerHTML = '';
+    lastLogCount = 0;
 }
 
 function resetUI() {
     document.getElementById('startSyncBtn').style.display = 'inline-block';
     document.getElementById('stopSyncBtn').style.display = 'none';
+    document.getElementById('currentProductCard').style.display = 'none';
     document.getElementById('syncStatusText').textContent = 'Aktarım Durumu: Bekliyor';
 }
 
 async function rollbackLastSync() {
     if (!confirm('Son aktarımda oluşturulan ürünler silinecek. Devam etmek istiyor musunuz?')) return;
+    
+    addLog('Geri alma başlatılıyor...', 'warning');
     
     try {
         const response = await fetch('/api/sync/rollback-last', { 
@@ -219,18 +506,23 @@ async function rollbackLastSync() {
         const data = await response.json();
         
         if (data.status === 'success') {
-            alert('Geri alma başarılı: ' + data.message);
+            addLog('✅ Geri alma başarılı: ' + (data.message || data.deleted + ' ürün silindi'), 'success');
+            alert('Geri alma başarılı!');
         } else {
+            addLog('❌ Hata: ' + data.message, 'error');
             alert('Hata: ' + data.message);
         }
     } catch (error) {
+        addLog('❌ Hata: ' + error.message, 'error');
         alert('Hata: ' + error.message);
     }
 }
 
 async function deleteAllProducts() {
-    if (!confirm('TÜM Shopify ürünleri silinecek! Bu işlem geri alınamaz. Devam etmek istiyor musunuz?')) return;
+    if (!confirm('TÜM Shopify ürünleri silinecek! Bu işlem geri alınamaz.')) return;
     if (!confirm('Emin misiniz? Bu işlem TÜM ürünleri silecek!')) return;
+    
+    addLog('Tüm ürünler siliniyor...', 'warning');
     
     try {
         const response = await fetch('/api/shopify/delete-all', { 
@@ -241,14 +533,16 @@ async function deleteAllProducts() {
         const data = await response.json();
         
         if (data.status === 'success') {
-            alert('Silme başarılı: ' + data.message);
+            addLog('✅ ' + (data.message || 'Silme başarılı'), 'success');
+            alert('Silme başarılı!');
         } else {
+            addLog('❌ Hata: ' + data.message, 'error');
             alert('Hata: ' + data.message);
         }
     } catch (error) {
+        addLog('❌ Hata: ' + error.message, 'error');
         alert('Hata: ' + error.message);
     }
 }
 </script>
 {% endblock %}
-

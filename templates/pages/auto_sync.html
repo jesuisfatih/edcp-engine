@@ -2,23 +2,63 @@
 
 {% block title %}Otomatik Güncelleme{% endblock %}
 
+{% block extra_css %}
+<style>
+    .status-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 12px;
+        padding: 25px;
+    }
+    .status-card.active {
+        background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+    }
+    .status-card.inactive {
+        background: linear-gradient(135deg, #636e72 0%, #2d3436 100%);
+    }
+    .filter-summary-card {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 15px;
+    }
+    .history-item {
+        padding: 12px 15px;
+        border-bottom: 1px solid #f0f0f0;
+    }
+    .history-item:last-child { border-bottom: none; }
+    .history-item.success { border-left: 3px solid #28a745; }
+    .history-item.error { border-left: 3px solid #dc3545; }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="page-header">
     <h2><i class="fas fa-clock"></i> Otomatik Güncelleme</h2>
 </div>
 
+<!-- Status Card -->
+<div class="status-card inactive mb-4" id="mainStatusCard">
+    <div class="row align-items-center">
+        <div class="col-md-8">
+            <h4 class="mb-2"><i class="fas fa-sync-alt"></i> Otomatik Güncelleme</h4>
+            <p class="mb-0 opacity-75" id="mainStatusText">Otomatik güncelleme kapalı</p>
+        </div>
+        <div class="col-md-4 text-end">
+            <div class="form-check form-switch d-inline-block">
+                <input class="form-check-input" type="checkbox" id="autoSyncEnabled" style="width: 4em; height: 2em;">
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="row">
     <div class="col-md-6">
+        <!-- Schedule Settings -->
         <div class="card">
             <div class="card-header">
-                <h5 class="mb-0"><i class="fas fa-cog"></i> Zamanlama Ayarları</h5>
+                <h5 class="mb-0"><i class="fas fa-calendar-alt"></i> Zamanlama Ayarları</h5>
             </div>
             <div class="card-body">
-                <div class="form-check form-switch mb-4">
-                    <input class="form-check-input" type="checkbox" id="autoSyncEnabled" style="width: 3em; height: 1.5em;">
-                    <label class="form-check-label fs-5" for="autoSyncEnabled">Otomatik Güncelleme Aktif</label>
-                </div>
-                
                 <div class="mb-3">
                     <label class="form-label">Güncelleme Sıklığı</label>
                     <select class="form-select" id="syncInterval">
@@ -35,24 +75,44 @@
                     <label class="form-label">Başlangıç Saati</label>
                     <input type="time" class="form-control" id="startTime" value="00:00">
                 </div>
-                
+            </div>
+        </div>
+        
+        <!-- Sync Options -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-tasks"></i> Güncelleme Seçenekleri</h5>
+            </div>
+            <div class="card-body">
                 <div class="form-check form-switch mb-3">
-                    <input class="form-check-input" type="checkbox" id="notifyOnComplete" checked>
-                    <label class="form-check-label" for="notifyOnComplete">Tamamlandığında Bildir</label>
+                    <input class="form-check-input" type="checkbox" id="autoSyncUpdateInventory" checked>
+                    <label class="form-check-label" for="autoSyncUpdateInventory">Stokları Güncelle</label>
                 </div>
-                
                 <div class="form-check form-switch mb-3">
-                    <input class="form-check-input" type="checkbox" id="notifyOnError" checked>
-                    <label class="form-check-label" for="notifyOnError">Hata Olursa Bildir</label>
+                    <input class="form-check-input" type="checkbox" id="autoSyncUpdatePrices" checked>
+                    <label class="form-check-label" for="autoSyncUpdatePrices">Fiyatları Güncelle</label>
+                </div>
+                <div class="form-check form-switch mb-3">
+                    <input class="form-check-input" type="checkbox" id="autoSyncUpdateImages">
+                    <label class="form-check-label" for="autoSyncUpdateImages">Görselleri Güncelle</label>
+                </div>
+                <div class="form-check form-switch mb-3">
+                    <input class="form-check-input" type="checkbox" id="autoSyncCreateNew" checked>
+                    <label class="form-check-label" for="autoSyncCreateNew">Yeni Ürünleri Oluştur</label>
+                </div>
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="autoSyncRequireApproval">
+                    <label class="form-check-label" for="autoSyncRequireApproval">Çalıştırmadan Önce Onay İste</label>
                 </div>
             </div>
         </div>
     </div>
     
     <div class="col-md-6">
+        <!-- Current Status -->
         <div class="card">
             <div class="card-header">
-                <h5 class="mb-0"><i class="fas fa-info-circle"></i> Durum</h5>
+                <h5 class="mb-0"><i class="fas fa-info-circle"></i> Durum Bilgisi</h5>
             </div>
             <div class="card-body">
                 <div class="d-flex justify-content-between mb-3">
@@ -67,25 +127,57 @@
                     <span>Sonraki Güncelleme:</span>
                     <span id="nextAutoSync">-</span>
                 </div>
+                <div class="d-flex justify-content-between">
+                    <span>Toplam Çalışma:</span>
+                    <span id="totalRuns">0</span>
+                </div>
             </div>
         </div>
         
+        <!-- Saved Filters Summary -->
         <div class="card">
             <div class="card-header">
-                <h5 class="mb-0"><i class="fas fa-history"></i> Son Otomatik Güncellemeler</h5>
+                <h5 class="mb-0"><i class="fas fa-filter"></i> Kullanılacak Filtreler</h5>
+            </div>
+            <div class="card-body" id="autoSyncFiltersDisplay">
+                <p class="text-muted mb-0">Yükleniyor...</p>
+            </div>
+        </div>
+        
+        <!-- Pending Approval -->
+        <div class="card" id="pendingApprovalCard" style="display: none;">
+            <div class="card-header bg-warning">
+                <h5 class="mb-0"><i class="fas fa-exclamation-triangle"></i> Onay Bekliyor</h5>
             </div>
             <div class="card-body">
-                <div id="autoSyncHistory">
-                    <p class="text-muted">Henüz otomatik güncelleme yapılmadı</p>
+                <p>Otomatik güncelleme çalıştırılmak üzere. Onaylamak ister misiniz?</p>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-success" onclick="approveAutoSync()">
+                        <i class="fas fa-check"></i> Onayla
+                    </button>
+                    <button class="btn btn-danger" onclick="rejectAutoSync()">
+                        <i class="fas fa-times"></i> Reddet
+                    </button>
                 </div>
             </div>
         </div>
     </div>
 </div>
 
+<!-- History -->
+<div class="card mt-4">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="fas fa-history"></i> Son Otomatik Güncellemeler</h5>
+    </div>
+    <div class="card-body p-0" id="autoSyncHistory">
+        <div class="p-3 text-muted text-center">Henüz otomatik güncelleme yapılmadı</div>
+    </div>
+</div>
+
+<!-- Action Buttons -->
 <div class="card mt-4">
     <div class="card-body text-center">
-        <button class="btn btn-accent btn-lg" onclick="saveAutoSyncSettings()">
+        <button class="btn btn-accent btn-lg" onclick="saveAutoSyncSettings()" id="saveAutoSyncBtn">
             <i class="fas fa-save"></i> Ayarları Kaydet
         </button>
         <button class="btn btn-outline-primary btn-lg ms-2" onclick="runManualSync()">
@@ -99,37 +191,158 @@
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     loadAutoSyncStatus();
-    setInterval(loadAutoSyncStatus, 30000); // Refresh every 30 seconds
+    loadAutoSyncFilters();
+    
+    // Update status card on checkbox change
+    document.getElementById('autoSyncEnabled').addEventListener('change', updateStatusCard);
+    
+    setInterval(loadAutoSyncStatus, 30000);
 });
+
+function updateStatusCard() {
+    const enabled = document.getElementById('autoSyncEnabled').checked;
+    const card = document.getElementById('mainStatusCard');
+    const text = document.getElementById('mainStatusText');
+    
+    if (enabled) {
+        card.className = 'status-card active mb-4';
+        text.textContent = 'Otomatik güncelleme aktif';
+    } else {
+        card.className = 'status-card inactive mb-4';
+        text.textContent = 'Otomatik güncelleme kapalı';
+    }
+}
 
 async function loadAutoSyncStatus() {
     try {
         const response = await fetch('/api/auto-sync/status');
         const data = await response.json();
         
+        document.getElementById('autoSyncEnabled').checked = data.enabled;
+        updateStatusCard();
+        
         if (data.enabled) {
-            document.getElementById('autoSyncEnabled').checked = true;
             document.getElementById('autoSyncStatus').textContent = 'Aktif';
             document.getElementById('autoSyncStatus').className = 'badge bg-success';
         } else {
-            document.getElementById('autoSyncEnabled').checked = false;
             document.getElementById('autoSyncStatus').textContent = 'Pasif';
             document.getElementById('autoSyncStatus').className = 'badge bg-secondary';
         }
         
-        if (data.last_run) {
-            document.getElementById('lastAutoSync').textContent = new Date(data.last_run).toLocaleString();
+        document.getElementById('lastAutoSync').textContent = data.last_run ? new Date(data.last_run).toLocaleString() : '-';
+        document.getElementById('nextAutoSync').textContent = data.next_run ? new Date(data.next_run).toLocaleString() : '-';
+        document.getElementById('totalRuns').textContent = data.total_runs || 0;
+        
+        // Pending approval
+        if (data.pending_approval) {
+            document.getElementById('pendingApprovalCard').style.display = 'block';
+        } else {
+            document.getElementById('pendingApprovalCard').style.display = 'none';
         }
         
-        if (data.next_run) {
-            document.getElementById('nextAutoSync').textContent = new Date(data.next_run).toLocaleString();
+        // History
+        if (data.history && data.history.length > 0) {
+            document.getElementById('autoSyncHistory').innerHTML = data.history.slice(0, 10).map(h => `
+                <div class="history-item ${h.status}">
+                    <div class="d-flex justify-content-between">
+                        <span>
+                            <i class="fas fa-${h.status === 'success' ? 'check-circle text-success' : 'times-circle text-danger'}"></i>
+                            ${h.created || 0} oluşturuldu, ${h.updated || 0} güncellendi, ${h.errors || 0} hata
+                        </span>
+                        <span class="text-muted">${new Date(h.timestamp).toLocaleString()}</span>
+                    </div>
+                </div>
+            `).join('');
         }
+        
+        // Load interval if set
+        if (data.interval_minutes) {
+            document.getElementById('syncInterval').value = data.interval_minutes;
+        }
+        
     } catch (error) {
         console.error('Error loading auto sync status:', error);
     }
 }
 
+async function loadAutoSyncFilters() {
+    try {
+        const response = await fetch('/api/config');
+        const data = await response.json();
+        
+        const display = document.getElementById('autoSyncFiltersDisplay');
+        
+        if (data.sync_options) {
+            const opts = data.sync_options;
+            const categories = opts.filter_categories || [];
+            const styles = opts.filter_styles || [];
+            const brands = opts.filter_brands || [];
+            const warehouses = opts.filter_warehouses || [];
+            
+            if (categories.length > 0 || styles.length > 0 || brands.length > 0) {
+                // Get product count
+                let productCount = '...';
+                try {
+                    const countResp = await fetch('/api/products/count', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ sync_options: opts })
+                    });
+                    const countData = await countResp.json();
+                    productCount = countData.count || 0;
+                } catch (e) {}
+                
+                display.innerHTML = `
+                    <div class="filter-summary-card">
+                        <div class="row mb-2">
+                            <div class="col-6"><strong>Kategoriler:</strong></div>
+                            <div class="col-6">${categories.length} seçili</div>
+                        </div>
+                        <div class="row mb-2">
+                            <div class="col-6"><strong>Stiller:</strong></div>
+                            <div class="col-6">${styles.length} seçili</div>
+                        </div>
+                        <div class="row mb-2">
+                            <div class="col-6"><strong>Markalar:</strong></div>
+                            <div class="col-6">${brands.length} seçili</div>
+                        </div>
+                        <div class="row mb-2">
+                            <div class="col-6"><strong>Lokasyon:</strong></div>
+                            <div class="col-6">${warehouses.length > 0 ? warehouses[0] : 'Seçilmedi'}</div>
+                        </div>
+                        <hr>
+                        <div class="row">
+                            <div class="col-6"><strong>Tahmini Ürün:</strong></div>
+                            <div class="col-6"><span class="badge bg-primary">${productCount.toLocaleString()}</span></div>
+                        </div>
+                    </div>
+                    <div class="mt-2">
+                        <a href="{{ url_for('page_sync_options') }}" class="btn btn-sm btn-outline-primary">
+                            <i class="fas fa-edit"></i> Filtreleri Düzenle
+                        </a>
+                    </div>
+                `;
+            } else {
+                display.innerHTML = `
+                    <div class="alert alert-warning mb-0">
+                        <i class="fas fa-exclamation-triangle"></i> Filtre seçilmedi. 
+                        <a href="{{ url_for('page_sync_options') }}">Filtreleri ayarlayın</a>
+                    </div>
+                `;
+            }
+        } else {
+            display.innerHTML = '<p class="text-muted mb-0">Filtre bulunamadı</p>';
+        }
+    } catch (error) {
+        console.error('Error loading filters:', error);
+    }
+}
+
 async function saveAutoSyncSettings() {
+    const btn = document.getElementById('saveAutoSyncBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Kaydediliyor...';
+    
     const enabled = document.getElementById('autoSyncEnabled').checked;
     const interval = document.getElementById('syncInterval').value;
     
@@ -138,15 +351,21 @@ async function saveAutoSyncSettings() {
             const response = await fetch('/api/auto-sync/start', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ interval_minutes: parseInt(interval) })
+                body: JSON.stringify({
+                    interval_minutes: parseInt(interval),
+                    update_inventory: document.getElementById('autoSyncUpdateInventory').checked,
+                    update_prices: document.getElementById('autoSyncUpdatePrices').checked,
+                    update_images: document.getElementById('autoSyncUpdateImages').checked,
+                    create_new: document.getElementById('autoSyncCreateNew').checked,
+                    require_approval: document.getElementById('autoSyncRequireApproval').checked
+                })
             });
             const data = await response.json();
             
             if (data.status === 'success') {
-                alert('Otomatik güncelleme aktif edildi!');
-                loadAutoSyncStatus();
+                alert('✅ Otomatik güncelleme aktif edildi!');
             } else {
-                alert('Hata: ' + data.message);
+                alert('❌ Hata: ' + data.message);
             }
         } else {
             const response = await fetch('/api/auto-sync/stop', { 
@@ -157,15 +376,39 @@ async function saveAutoSyncSettings() {
             const data = await response.json();
             
             if (data.status === 'success') {
-                alert('Otomatik güncelleme durduruldu!');
-                loadAutoSyncStatus();
+                alert('Otomatik güncelleme durduruldu');
             } else {
                 alert('Hata: ' + data.message);
             }
         }
+        
+        loadAutoSyncStatus();
+    } catch (error) {
+        alert('Hata: ' + error.message);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-save"></i> Ayarları Kaydet';
+    }
+}
+
+async function approveAutoSync() {
+    try {
+        const response = await fetch('/api/auto-sync/approve', { 
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+        });
+        const data = await response.json();
+        alert(data.message || 'Onaylandı');
+        loadAutoSyncStatus();
     } catch (error) {
         alert('Hata: ' + error.message);
     }
+}
+
+async function rejectAutoSync() {
+    document.getElementById('pendingApprovalCard').style.display = 'none';
+    loadAutoSyncStatus();
 }
 
 function runManualSync() {
@@ -173,4 +416,5 @@ function runManualSync() {
 }
 </script>
 {% endblock %}
+
 
