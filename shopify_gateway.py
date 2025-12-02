@@ -206,8 +206,20 @@ class ShopifyGateway:
         # Execute mutation
         result = self._execute_graphql(mutation, variables)
         
-        # Check for errors
-        product_set_result = result.get('data', {}).get('productSet', {})
+        # DEBUG: Log full response
+        print(f"   🔍 DEBUG Response: {json.dumps(result, indent=2)[:2000]}")
+        
+        # Check for errors - handle None cases
+        if not result:
+            raise Exception("GraphQL returned None response")
+        
+        data = result.get('data')
+        if not data:
+            raise Exception(f"GraphQL returned no data: {result}")
+        
+        product_set_result = data.get('productSet')
+        if not product_set_result:
+            raise Exception(f"productSet returned None: {result}")
         
         # Check userErrors
         user_errors = product_set_result.get('userErrors', [])
@@ -294,7 +306,11 @@ class ShopifyGateway:
         variables = {'productId': product_gid, 'first': 250, 'after': None}
         result = self._execute_graphql(query, variables)
         
-        page_info = result.get('data', {}).get('product', {}).get('variants', {}).get('pageInfo', {})
+        # Safe extraction - handle None cases
+        data = result.get('data') if result else None
+        product = data.get('product') if data else None
+        variants = product.get('variants') if product else None
+        page_info = variants.get('pageInfo', {}) if variants else {}
         has_next = page_info.get('hasNextPage', False)
         cursor = page_info.get('endCursor')
         
@@ -302,8 +318,11 @@ class ShopifyGateway:
             variables['after'] = cursor
             result = self._execute_graphql(query, variables)
             
-            variants_data = result.get('data', {}).get('product', {}).get('variants', {})
-            edges = variants_data.get('edges', [])
+            # Safe extraction
+            data = result.get('data') if result else None
+            product = data.get('product') if data else None
+            variants_data = product.get('variants') if product else None
+            edges = variants_data.get('edges', []) if variants_data else []
             
             for edge in edges:
                 node = edge.get('node', {})
@@ -318,7 +337,7 @@ class ShopifyGateway:
                     'price': node.get('price', '0')
                 })
             
-            page_info = variants_data.get('pageInfo', {})
+            page_info = variants_data.get('pageInfo', {}) if variants_data else {}
             has_next = page_info.get('hasNextPage', False)
             cursor = page_info.get('endCursor')
             
@@ -328,8 +347,12 @@ class ShopifyGateway:
     
     def _assign_images_to_variants_graphql(self, product_gid: str, product_data: Dict):
         """Assign images to variants based on color matching"""
-        media_edges = product_data.get('media', {}).get('edges', [])
-        variants_edges = product_data.get('variants', {}).get('edges', [])
+        # Safe extraction - handle None cases
+        media_data = product_data.get('media') if product_data else None
+        media_edges = media_data.get('edges', []) if media_data else []
+        
+        variants_data = product_data.get('variants') if product_data else None
+        variants_edges = variants_data.get('edges', []) if variants_data else []
         
         if not media_edges or not variants_edges:
             print(f"   ⚠️ No images or variants to link")
