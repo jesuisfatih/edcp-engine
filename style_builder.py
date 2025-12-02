@@ -7,6 +7,7 @@ Responsibility: Transform cached S&S products into clean Style domain models
 from domain_models import Style, StyleVariant, StyleImage
 from database import get_db
 from typing import List, Dict, Optional
+from datetime import datetime
 import json
 
 
@@ -106,12 +107,20 @@ class StyleBuilder:
                     # Aggregate location inventory
                     if variant.inventory_quantity:
                         existing.location_inventory[variant.sku] = variant.inventory_quantity
+                        
+                        # Update total
                         existing.inventory_quantity = sum(existing.location_inventory.values())
+                        
+                        # CRITICAL: Use SKU with highest stock as primary
+                        if variant.inventory_quantity > existing.location_inventory.get(existing.sku, 0):
+                            # This SKU has more stock, make it primary
+                            existing.sku = variant.sku
+                            existing.barcode = variant.barcode  # Update barcode too
                     
                     merged_count += 1
                     
                     if merged_count <= 5:
-                        self._log(f"  🔄 Merged {variant.sku} into {existing.sku} ({variant.color_name}/{variant.size_name}) - Total stock: {existing.inventory_quantity}")
+                        self._log(f"  🔄 Merged {variant.sku} (stock: {variant.inventory_quantity}) into {existing.sku} - Total: {existing.inventory_quantity}")
                 else:
                     # New variant
                     variant.skus = [variant.sku]
@@ -129,6 +138,46 @@ class StyleBuilder:
         
         if merged_count > 0:
             self._log(f"  ✅ Merged {merged_count} duplicate SKUs into {len(variants_list)} unique variants")
+        
+        # Save SKU mapping to JSON file for reference
+        if merged_count > 0:
+            try:
+                import json
+                mapping_data = {
+                    "style_id": str(style_id),
+                    "timestamp": datetime.now().isoformat(),
+                    "total_skus": len(products),
+                    "unique_variants": len(variants_list),
+                    "merged_count": merged_count,
+                    "mappings": []
+                }
+                
+                for v in variants_list:
+                    if len(v.skus) > 1:
+                        mapping_data["mappings"].append({
+                            "primary_sku": v.sku,
+                            "color": v.color_name,
+                            "size": v.size_name,
+                            "merged_skus": v.skus,
+                            "total_inventory": v.inventory_quantity,
+                            "location_inventory": v.location_inventory
+                        })
+                
+                # Append to JSON file
+                try:
+                    with open('sku_mapping.json', 'r') as f:
+                        existing = json.load(f)
+                except:
+                    existing = {"version": "1.0", "mappings": []}
+                
+                existing["mappings"].append(mapping_data)
+                
+                with open('sku_mapping.json', 'w') as f:
+                    json.dump(existing, f, indent=2)
+                
+                self._log(f"  💾 SKU mapping saved to sku_mapping.json")
+            except Exception as e:
+                print(f"  Warning: Could not save SKU mapping: {e}")
         
         self._log(f"  ✅ Total variants built: {len(variants_list)}")
         
