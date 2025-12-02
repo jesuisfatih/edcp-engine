@@ -540,8 +540,25 @@ async function loadPreview() {
         const countData = await countResponse.json();
         const whData = await whResponse.json();
         
-        console.log('Count:', countData);
-        console.log('Warehouses:', whData);
+        console.log('Count Response:', countData);
+        console.log('Warehouses Response:', whData);
+        
+        // Check for API errors
+        if (countData.status === 'error') {
+            container.innerHTML = `<div class="alert alert-danger">
+                <i class="fas fa-exclamation-triangle"></i> <strong>Ürün sayısı alınamadı:</strong> ${countData.message}
+                <br><small>API Ayarları sayfasından credentials'ları kontrol edin.</small>
+            </div>`;
+            return;
+        }
+        
+        if (whData.status === 'error') {
+            container.innerHTML = `<div class="alert alert-danger">
+                <i class="fas fa-exclamation-triangle"></i> <strong>Lokasyonlar alınamadı:</strong> ${whData.message}
+                <br><small>API Ayarları sayfasından credentials'ları kontrol edin.</small>
+            </div>`;
+            return;
+        }
         
         const productCount = countData.count || 0;
         

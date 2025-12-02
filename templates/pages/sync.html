@@ -246,12 +246,51 @@ let syncInterval = null;
 let autoStart = new URLSearchParams(window.location.search).get('autostart');
 let lastLogCount = 0;
 
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
+    // First check if sync is already running
+    await checkAndResumeSync();
+    
+    // Then start new sync if autostart
     if (autoStart === '1') {
         startSync();
     }
-    checkSyncStatus();
 });
+
+async function checkAndResumeSync() {
+    try {
+        const response = await fetch('/api/sync/status');
+        const data = await response.json();
+        
+        if (data.is_running) {
+            // Sync is running - resume UI
+            console.log('Resuming active sync...');
+            document.getElementById('startSyncBtn').style.display = 'none';
+            document.getElementById('stopSyncBtn').style.display = 'inline-block';
+            document.getElementById('progressCard').style.display = 'block';
+            document.getElementById('currentProductCard').style.display = 'block';
+            document.getElementById('syncStatusText').textContent = 'Aktarım Durumu: Devam ediyor...';
+            
+            // Update UI with current state
+            updateProgress(data);
+            updateStats(data.stats);
+            updateStepIndicators(data.step || data.message || '');
+            if (data.logs) {
+                lastLogCount = 0;
+                updateLogs(data.logs);
+            }
+            
+            // Start polling
+            if (!syncInterval) {
+                startPolling();
+            }
+        } else if (data.last_sync) {
+            // Show last sync stats
+            updateStats(data.last_sync);
+        }
+    } catch (error) {
+        console.error('Resume check error:', error);
+    }
+}
 
 async function startSync() {
     document.getElementById('startSyncBtn').style.display = 'none';

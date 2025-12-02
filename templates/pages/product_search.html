@@ -369,7 +369,11 @@ async function search(append) {
 }
 
 function createProductCard(product) {
-    const image = product.image || 'https://via.placeholder.com/200x200?text=No+Image';
+    // Handle null, undefined, 'None', empty string for image
+    let image = product.image;
+    if (!image || image === 'None' || image === 'null' || image === '') {
+        image = 'https://via.placeholder.com/200x200?text=No+Image';
+    }
     const price = product.basePrice ? `$${parseFloat(product.basePrice).toFixed(2)}` : '-';
     
     return `
