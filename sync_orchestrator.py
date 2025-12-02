@@ -102,7 +102,7 @@ class SyncOrchestrator:
             self.stats['styles_unchanged'] += 1
             return  # Skip unchanged
         
-        # Build desired state (handles 100-variant split)
+        # Build desired state (handles 2048-variant split if needed - rare)
         desired = self.reconciler.build_desired_state(style)
         
         self._log('info', f'   Desired: {len(desired.parts)} Shopify product(s)')

@@ -1440,7 +1440,8 @@ function updateConsoleLogs(logs) {
     if (logs.length > lastLogCount) {
         const newLogs = logs.slice(lastLogCount);
         
-        newLogs.forEach(log => {
+        // Reverse new logs so newest appears first (at top)
+        newLogs.reverse().forEach(log => {
             const logLine = document.createElement('div');
             logLine.className = `console-line log-${log.level || 'info'}`;
             
@@ -1454,13 +1455,15 @@ function updateConsoleLogs(logs) {
             
             logLine.appendChild(prompt);
             logLine.appendChild(text);
-            consoleOutput.appendChild(logLine);
+            
+            // Insert at TOP (newest first)
+            consoleOutput.insertBefore(logLine, consoleOutput.firstChild);
         });
         
         lastLogCount = logs.length;
         
-        // Auto-scroll to bottom
-        consoleOutput.scrollTop = consoleOutput.scrollHeight;
+        // Keep scroll at top (newest logs visible)
+        consoleOutput.scrollTop = 0;
     }
 }
 

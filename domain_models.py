@@ -213,7 +213,8 @@ class Style:
 class StylePart:
     """
     Represents one part of a split style
-    Used when a style has >100 variants and must be split into multiple Shopify products
+    Used when a style has >2048 variants and must be split into multiple Shopify products
+    (Rare case - Shopify GraphQL API now supports 2048 variants per product)
     """
     style: Style
     part_index: int
