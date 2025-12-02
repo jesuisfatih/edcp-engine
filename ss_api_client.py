@@ -293,44 +293,55 @@ class SSActivewearClient:
     
     def get_warehouses(self) -> List[Dict]:
         """
-        Get list of all warehouses with inventory
-        Returns: List of warehouse info with stock counts
+        Get list of all warehouses with inventory using Inventory API
+        Returns: List of warehouse info sorted by stock (highest first)
+        
+        Uses /v2/inventory/ endpoint which returns warehouses array per SKU
         """
         try:
-            # Get sample products to extract warehouse info
-            products = self.get_products(limit=1000)
+            # Get inventory (faster than products, has warehouse array)
+            inventory_items = self.get_inventory()
+            
+            if not inventory_items:
+                return [{'code': 'ALL', 'name': 'Tüm Lokasyonlar', 'total_stock': 0, 'product_count': 0}]
             
             warehouse_stock = {}
             
-            for p in products:
-                # Extract warehouse from product data
-                # S&S API may have 'warehouse', 'warehouseCode', or similar field
-                warehouse = (p.get('warehouse') or 
-                           p.get('warehouseCode') or 
-                           p.get('location') or 
-                           p.get('locationCode') or
-                           'ALL')  # Default to ALL if no warehouse specified
+            # Parse warehouses array from each inventory item
+            for item in inventory_items:
+                warehouses = item.get('warehouses', [])
                 
-                qty = p.get('qty', 0) or 0
+                if not warehouses:
+                    # Fallback: use top-level qty if no warehouses array
+                    qty = item.get('qty', 0) or 0
+                    if 'ALL' not in warehouse_stock:
+                        warehouse_stock['ALL'] = {
+                            'code': 'ALL',
+                            'name': 'Tüm Lokasyonlar',
+                            'total_stock': 0,
+                            'product_count': 0
+                        }
+                    warehouse_stock['ALL']['total_stock'] += qty
+                    warehouse_stock['ALL']['product_count'] += 1
+                    continue
                 
-                if warehouse not in warehouse_stock:
-                    warehouse_stock[warehouse] = {
-                        'code': str(warehouse),
-                        'name': str(warehouse),
-                        'total_stock': 0,
-                        'product_count': 0
-                    }
-                
-                warehouse_stock[warehouse]['total_stock'] += qty
-                warehouse_stock[warehouse]['product_count'] += 1
+                # Process warehouse array
+                for wh in warehouses:
+                    wh_code = wh.get('warehouseAbbr', 'Unknown')
+                    qty = wh.get('qty', 0) or 0
+                    
+                    if wh_code not in warehouse_stock:
+                        warehouse_stock[wh_code] = {
+                            'code': wh_code,
+                            'name': wh_code,  # Can be enhanced with full names later
+                            'total_stock': 0,
+                            'product_count': 0
+                        }
+                    
+                    warehouse_stock[wh_code]['total_stock'] += qty
+                    warehouse_stock[wh_code]['product_count'] += 1
             
-            # If only one "ALL" warehouse found, use fallback
-            if len(warehouse_stock) == 1 and 'ALL' in warehouse_stock:
-                return [
-                    {'code': 'ALL', 'name': 'Tüm Lokasyonlar', 'total_stock': warehouse_stock['ALL']['total_stock'], 'product_count': warehouse_stock['ALL']['product_count']}
-                ]
-            
-            # Convert to list and sort by stock
+            # Convert to list and sort by stock (highest first)
             warehouses = sorted(
                 warehouse_stock.values(),
                 key=lambda x: x['total_stock'],
@@ -338,8 +349,11 @@ class SSActivewearClient:
             )
             
             return warehouses
+            
         except Exception as e:
-            print(f"Error getting warehouses: {e}")
+            print(f"Error getting warehouses from inventory API: {e}")
+            import traceback
+            traceback.print_exc()
             # Fallback
             return [
                 {'code': 'ALL', 'name': 'Tüm Lokasyonlar', 'total_stock': 0, 'product_count': 0}
