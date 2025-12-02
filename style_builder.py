@@ -86,29 +86,49 @@ class StyleBuilder:
         
         self._log(f"  📦 Building Style object...")
         
-        # Build variants FIRST (before creating Style object)
-        seen_option_keys = set()
-        variants_list = []  # Initialize list
+        # Build variants with MULTI-LOCATION INVENTORY support
+        # Merge same color/size combinations (different warehouses/SKUs)
+        variant_map = {}  # {option_key: StyleVariant}
+        merged_count = 0
         
-        self._log(f"  📊 Building variants from {len(products)} products...")
+        self._log(f"  🔨 Building variants from {len(products)} products (with location merge)...")
         
         for idx, product in enumerate(products):
             try:
                 variant = self._build_variant(product)
+                option_key = variant.option_key
                 
-                # Deduplicate by option key
-                if variant.option_key in seen_option_keys:
-                    print(f"  Skipping duplicate variant: {variant.sku} ({variant.option_key})")
-                    continue
-                
-                seen_option_keys.add(variant.option_key)
-                variants_list.append(variant)
-                
-                if idx < 3:  # Log first 3 variants
-                    self._log(f"  📊 Variant {idx+1}: {variant.sku} - {variant.color_name} / {variant.size_name}")
+                if option_key in variant_map:
+                    # MERGE: Same color/size, different warehouse
+                    existing = variant_map[option_key]
+                    existing.skus.append(variant.sku)
+                    
+                    # Aggregate location inventory
+                    if variant.inventory_quantity:
+                        existing.location_inventory[variant.sku] = variant.inventory_quantity
+                        existing.inventory_quantity = sum(existing.location_inventory.values())
+                    
+                    merged_count += 1
+                    
+                    if merged_count <= 5:
+                        self._log(f"  🔄 Merged {variant.sku} into {existing.sku} ({variant.color_name}/{variant.size_name}) - Total stock: {existing.inventory_quantity}")
+                else:
+                    # New variant
+                    variant.skus = [variant.sku]
+                    if variant.inventory_quantity:
+                        variant.location_inventory = {variant.sku: variant.inventory_quantity}
+                    variant_map[option_key] = variant
+                    
+                    if len(variant_map) <= 3:
+                        self._log(f"  📦 Variant {len(variant_map)}: {variant.sku} - {variant.color_name} / {variant.size_name}")
             except Exception as e:
                 self._log(f"  ❌ Failed to build variant {idx}: {e}")
                 continue
+        
+        variants_list = list(variant_map.values())
+        
+        if merged_count > 0:
+            self._log(f"  ✅ Merged {merged_count} duplicate SKUs into {len(variants_list)} unique variants")
         
         self._log(f"  ✅ Total variants built: {len(variants_list)}")
         
