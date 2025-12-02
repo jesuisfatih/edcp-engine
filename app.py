@@ -533,6 +533,28 @@ def get_styles():
         response.headers['Content-Length'] = str(len(response.get_data()))
         return response, 400
 
+@app.route('/api/warehouses', methods=['POST'])
+def get_warehouses():
+    """Get list of warehouses with stock info"""
+    try:
+        data = request.json
+        ss_client = SSActivewearClient(
+            data.get('ss_account_number'),
+            data.get('ss_api_key')
+        )
+        
+        warehouses = ss_client.get_warehouses()
+        
+        return jsonify({
+            'status': 'success',
+            'warehouses': warehouses
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
 @app.route('/api/brands', methods=['POST'])
 def get_brands():
     """Get brands filtered by styles - organized by style"""
