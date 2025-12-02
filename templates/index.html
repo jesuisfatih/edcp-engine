@@ -428,20 +428,43 @@
                             </div>
                         </div>
 
-                        <!-- Step 4: Other Filters -->
+                        <!-- Step 4: Preview + Location Selection -->
                         <div class="tab-pane fade" id="step4" role="tabpanel">
-                            <div class="row">
+                            <h5 class="mb-3">📋 Önizleme ve Lokasyon Seçimi</h5>
+                            
+                            <button type="button" class="btn btn-primary mb-3" onclick="loadPreviewWithLocations()">
+                                <i class="fas fa-sync"></i> Önizleme Yükle
+                            </button>
+                            
+                            <div class="alert alert-info">
+                                <i class="fas fa-info-circle"></i>
+                                <strong>ÖNEMLİ:</strong> Seçtiğiniz ürünler için lokasyon bazlı stok durumu gösterilecek.
+                                En yüksek stoğu olan lokasyon otomatik seçilecek.
+                            </div>
+                            
+                            <div id="previewWithLocations" class="border rounded p-3" style="max-height: 500px; overflow-y: auto;">
+                                <p class="text-muted text-center">Önizleme yüklemek için yukarıdaki butona tıklayın</p>
+                            </div>
+                            
+                            <div class="mb-3 mt-3" id="locationSelectionSection" style="display:none;">
+                                <h6>📍 Lokasyon Seçimi:</h6>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="autoSelectHighestStock" checked>
+                                    <label class="form-check-label" for="autoSelectHighestStock">
+                                        ✅ En çok stoğu olan lokasyonu otomatik seç
+                                    </label>
+                                </div>
+                                <div id="locationsList" class="mt-2">
+                                </div>
+                            </div>
+                            
+                            <!-- Other filters moved here -->
+                            <div class="row mt-4">
                                 <div class="col-md-6">
                                     <div class="mb-3">
-                                        <label class="form-label">Part Number Filtresi</label>
+                                        <label class="form-label">Part Number Filtresi (opsiyonel)</label>
                                         <input type="text" class="form-control" id="filterPartNumber" 
                                                placeholder="örn: 00760">
-                                    </div>
-                                    <div class="mb-3">
-                                        <label class="form-label">Depo Filtresi</label>
-                                        <input type="text" class="form-control" id="filterWarehouses" 
-                                               placeholder="örn: IL,KS,PA">
-                                        <small class="text-muted">Virgülle ayırın: IL,KS,PA</small>
                                     </div>
                                 </div>
                                 <div class="col-md-6">
