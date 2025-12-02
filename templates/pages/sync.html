@@ -101,7 +101,8 @@ async function startSync() {
     try {
         const response = await fetch('/api/sync/start', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
         });
         const data = await response.json();
         
@@ -120,7 +121,11 @@ async function startSync() {
 
 async function stopSync() {
     try {
-        await fetch('/api/sync/stop', { method: 'POST' });
+        await fetch('/api/sync/stop', { 
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+        });
         addLog('Aktarım durduruldu', 'warning');
         resetUI();
     } catch (error) {
@@ -206,7 +211,11 @@ async function rollbackLastSync() {
     if (!confirm('Son aktarımda oluşturulan ürünler silinecek. Devam etmek istiyor musunuz?')) return;
     
     try {
-        const response = await fetch('/api/sync/rollback-last', { method: 'POST' });
+        const response = await fetch('/api/sync/rollback-last', { 
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+        });
         const data = await response.json();
         
         if (data.status === 'success') {
@@ -224,7 +233,11 @@ async function deleteAllProducts() {
     if (!confirm('Emin misiniz? Bu işlem TÜM ürünleri silecek!')) return;
     
     try {
-        const response = await fetch('/api/shopify/delete-all', { method: 'POST' });
+        const response = await fetch('/api/shopify/delete-all', { 
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+        });
         const data = await response.json();
         
         if (data.status === 'success') {

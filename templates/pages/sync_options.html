@@ -240,7 +240,8 @@ async function loadCategories() {
     try {
         const response = await fetch('/api/categories', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
         });
         const data = await response.json();
         
@@ -376,7 +377,8 @@ async function loadPreview() {
         // Get warehouses
         const whResponse = await fetch('/api/warehouses', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
         });
         const whData = await whResponse.json();
         

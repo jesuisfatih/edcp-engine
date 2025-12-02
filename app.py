@@ -174,7 +174,7 @@ def start_sync():
     """Start synchronization process"""
     global sync_manager
     
-    config_data = request.json or {}
+    config_data = request.get_json(silent=True) or {}
     
     # Get sync_options from request, fallback to database, then session
     sync_options = config_data.get('sync_options', {})
@@ -297,7 +297,7 @@ def stop_sync():
 def products_count():
     """Get count of products based on filters - NO Shopify needed"""
     try:
-        data = request.json or {}
+        data = request.get_json(silent=True) or {}
         
         # Get credentials from database
         ss_config = get_config('ss_config') or session.get('ss_config', {})
@@ -560,7 +560,7 @@ def get_categories():
 def get_styles():
     """Get styles filtered by categories"""
     try:
-        data = request.json or {}
+        data = request.get_json(silent=True) or {}
         
         # Get credentials from database
         ss_config = get_config('ss_config') or session.get('ss_config', {})
@@ -602,33 +602,29 @@ def get_styles():
         except:
             pass
         
+        # Build styles list
+        styles_list = []
         if category_ids:
-            # Use styles' categories field directly (much faster!)
-            # Style objects have a 'categories' field with comma-separated category IDs
+            # Filter by selected categories
+            seen_ids = set()
             for style in all_styles:
                 style_cats = style.get('categories', '')
                 if style_cats:
                     style_cat_list = [c.strip() for c in str(style_cats).split(',')]
-                    # Check if any selected category matches
                     for cat_id in category_ids:
-                        if cat_id in style_cat_list:
-                            if cat_id not in styles_by_category:
-                                styles_by_category[cat_id] = []
-                            # Avoid duplicates
-                            if not any(s.get('styleID') == style.get('styleID') for s in styles_by_category[cat_id]):
-                                styles_by_category[cat_id].append(style)
+                        if str(cat_id) in style_cat_list and style.get('styleID') not in seen_ids:
+                            styles_list.append(style)
+                            seen_ids.add(style.get('styleID'))
+                            break
         else:
-            # If no categories selected, return all styles in a single group
-            styles_by_category['all'] = all_styles[:200]
+            # Return all styles (limited)
+            styles_list = all_styles[:500]
         
-        response = jsonify({
+        return jsonify({
             'status': 'success',
-            'styles_by_category': styles_by_category,
-            'category_map': category_map
+            'styles': styles_list,
+            'total': len(styles_list)
         })
-        # Fix content length issue
-        response.headers['Content-Length'] = str(len(response.get_data()))
-        return response
     except Exception as e:
         import traceback
         error_detail = traceback.format_exc()
@@ -672,7 +668,7 @@ def get_warehouses():
 def get_brands():
     """Get brands filtered by styles - organized by style"""
     try:
-        data = request.json or {}
+        data = request.get_json(silent=True) or {}
         
         # Get credentials from database
         ss_config = get_config('ss_config') or session.get('ss_config', {})
@@ -727,9 +723,8 @@ def get_brands():
         
         return jsonify({
             'status': 'success',
-            'brands_by_style': brands_by_style,
-            'all_brands': all_brands,
-            'style_map': style_map
+            'brands': all_brands,
+            'total': len(all_brands)
         })
     except Exception as e:
         import traceback
@@ -992,7 +987,7 @@ def delete_all_shopify_data():
 def search_products():
     """Fast product search using FTS5 cache"""
     try:
-        data = request.json or {}
+        data = request.get_json(silent=True) or {}
         query = data.get('query', '').strip()
         limit = data.get('limit', 50)
         offset = data.get('offset', 0)

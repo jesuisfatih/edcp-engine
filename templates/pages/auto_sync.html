@@ -149,7 +149,11 @@ async function saveAutoSyncSettings() {
                 alert('Hata: ' + data.message);
             }
         } else {
-            const response = await fetch('/api/auto-sync/stop', { method: 'POST' });
+            const response = await fetch('/api/auto-sync/stop', { 
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({})
+            });
             const data = await response.json();
             
             if (data.status === 'success') {

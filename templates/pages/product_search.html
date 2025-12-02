@@ -269,7 +269,11 @@ async function rebuildCache() {
     document.getElementById('cacheStatusText').textContent = 'Cache yenileniyor... (bu biraz sürebilir)';
     
     try {
-        const response = await fetch('/api/search-cache/rebuild', { method: 'POST' });
+        const response = await fetch('/api/search-cache/rebuild', { 
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+        });
         const data = await response.json();
         
         if (data.status === 'success') {
