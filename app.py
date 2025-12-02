@@ -377,10 +377,21 @@ def preview():
         else:
             brand_list = [str(brand_names).strip()] if brand_names and not str(brand_names).isdigit() else []
         
-        # Get products - use smaller limit for preview
+        # Get products - USE STYLE FILTER AT API LEVEL!
         print(f"Preview: Fetching products with filters - Categories: {category_list}, Styles: {style_list}, Brands: {brand_list}")
-        products = ss_client.get_products(limit=2000)
-        print(f"Preview: Fetched {len(products)} products")
+        
+        # Build style parameter for API
+        style_param = None
+        if style_list:
+            style_param = ','.join(str(s) for s in style_list)
+        
+        # Fetch with style filter if available (much more efficient!)
+        if style_param:
+            products = ss_client.get_products(styleid=style_param, limit=10000)
+            print(f"Preview: Fetched {len(products)} products for styles: {style_param}")
+        else:
+            products = ss_client.get_products(limit=5000)
+            print(f"Preview: Fetched {len(products)} products (no style filter)")
         
         # Filter by categories
         if category_list:
