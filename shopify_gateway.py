@@ -121,7 +121,7 @@ class ShopifyGateway:
             for idx, v in enumerate(variants_payload):
                 print(f"     {idx+1}. {v['sku']}: {v['option1']} / {v['option2']}")
         
-        # Product payload
+        # Product payload - CRITICAL: Must define options for Color and Size!
         payload = {
             'product': {
                 'title': style_part.title,
@@ -130,6 +130,10 @@ class ShopifyGateway:
                 'product_type': style_part.style.product_type,
                 'tags': ', '.join(style_part.style.tags),
                 'status': 'active',
+                'options': [
+                    {'name': 'Color'},
+                    {'name': 'Size'}
+                ],
                 'variants': variants_payload
             }
         }
