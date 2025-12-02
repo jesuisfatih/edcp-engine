@@ -51,7 +51,7 @@ class ShopifyGateway:
         # This prevents "variant already exists" errors
         print(f"   🗑️ Deleting ALL existing products (clean slate)...")
         try:
-            graphql_url = f"https://{self.shop_domain}/admin/api/{self.api_version}/graphql.json"
+            graphql_url = f"{self.shop_domain}/admin/api/{self.api_version}/graphql.json"
             
             # Get all products using GraphQL
             query = """
