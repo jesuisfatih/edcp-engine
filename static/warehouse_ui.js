@@ -3,6 +3,11 @@
 let selectedWarehouses = [];
 let warehousesData = [];
 
+// Immediately export to window
+if (typeof window !== 'undefined') {
+    window.selectedWarehouses = selectedWarehouses;
+}
+
 async function loadWarehouses() {
     try {
         const ssAccountNumber = document.getElementById('ssAccountNumber').value;
@@ -270,8 +275,14 @@ function saveFiltersAndStart() {
     }, 500);
 }
 
-// Export for use in main script
-window.loadWarehouses = loadWarehouses;
-window.getSelectedWarehouses = getSelectedWarehouses;
-window.loadPreviewWithLocations = loadPreviewWithLocations;
+// CRITICAL: Export ALL functions to window immediately
+if (typeof window !== 'undefined') {
+    window.loadWarehouses = loadWarehouses;
+    window.getSelectedWarehouses = getSelectedWarehouses;
+    window.loadPreviewWithLocations = loadPreviewWithLocations;
+    window.selectLocation = selectLocation;
+    window.saveFiltersAndStart = saveFiltersAndStart;
+    
+    console.log('✅ Warehouse UI functions exported to window');
+}
 
