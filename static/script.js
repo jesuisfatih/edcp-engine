@@ -416,6 +416,22 @@ async function startSync() {
         return;
     }
     
+    // CRITICAL: Check if warehouse/location is selected
+    const warehouseFilter = syncOptions.filter_warehouses || [];
+    console.log('Warehouse filter:', warehouseFilter);
+    
+    if (!warehouseFilter || warehouseFilter.length === 0) {
+        const confirmNoWarehouse = confirm(
+            '⚠️ UYARI: Lokasyon seçilmedi!\n\n' +
+            'Lokasyon seçmeden aktarım yapmak "duplicate variant" hatalarına neden olabilir.\n\n' +
+            'Önce "Önizleme + Lokasyon" sekmesinden bir lokasyon seçmeniz önerilir.\n\n' +
+            'Yine de devam etmek istiyor musunuz?'
+        );
+        if (!confirmNoWarehouse) {
+            return;
+        }
+    }
+    
     // Check if filters are selected
     if (!syncOptions.filter_categories && !syncOptions.filter_styles && !syncOptions.filter_brands && 
         !syncOptions.filter_partnumber && !syncOptions.filter_sku) {

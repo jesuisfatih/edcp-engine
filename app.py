@@ -177,6 +177,13 @@ def start_sync():
         print(f"Filter categories: {sync_options.get('filter_categories')}")
         print(f"Filter styles: {sync_options.get('filter_styles')}")
         print(f"Filter brands: {sync_options.get('filter_brands')}")
+        print(f"Filter warehouses: {sync_options.get('filter_warehouses')}")
+        
+        # CRITICAL: Warn if no warehouse filter (will cause duplicate variants!)
+        warehouse_filter = sync_options.get('filter_warehouses', [])
+        if not warehouse_filter:
+            print("⚠️ WARNING: No warehouse filter selected! This may cause duplicate variant errors!")
+            print("⚠️ Recommendation: Select a specific warehouse/location before syncing")
         
         sync_manager = SyncManager(ss_client, shopify_client, sync_options)
         
