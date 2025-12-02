@@ -84,3 +84,4 @@ Tarayıcıda açın: http://localhost:5000
 - Büyük senkronizasyonlar saatler sürebilir
 
 
+

@@ -244,3 +244,4 @@ class Reconciler:
         print(f"  Style {style.style_id} changed (hash mismatch), will sync")
         return True
 
+
