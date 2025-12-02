@@ -388,6 +388,9 @@ function goToStep(step) {
         loadStyles();
     } else if (step === 3 && selectedStyles.length > 0) {
         loadBrands();
+    } else if (step === 4) {
+        // Önizleme adımına geçince otomatik yükle
+        loadPreview();
     }
 }
 
@@ -562,11 +565,19 @@ async function loadPreview() {
         
         const productCount = countData.count || 0;
         
-        // Check if no filters selected
-        if (selectedCategories.length === 0 && selectedStyles.length === 0 && selectedBrands.length === 0) {
+        // Debug: Log selected filters
+        console.log('Loading preview with filters:', {
+            categories: selectedCategories,
+            styles: selectedStyles,
+            brands: selectedBrands
+        });
+        
+        // Check if no filters selected - at least styles should be selected
+        if (selectedStyles.length === 0 && selectedCategories.length === 0) {
             container.innerHTML = `<div class="alert alert-warning">
                 <i class="fas fa-exclamation-triangle"></i> 
-                <strong>Filtre seçilmedi!</strong> Lütfen en az bir kategori, stil veya marka seçin.
+                <strong>Filtre seçilmedi!</strong> Lütfen en az bir stil veya kategori seçin.
+                <br><small>Seçilen: Kategoriler: ${selectedCategories.length}, Stiller: ${selectedStyles.length}</small>
             </div>`;
             return;
         }
@@ -1031,7 +1042,8 @@ function filterList(containerId, query) {
 function updateButtons() {
     document.getElementById('step1NextBtn').disabled = selectedCategories.length === 0;
     document.getElementById('step2NextBtn').disabled = selectedStyles.length === 0;
-    document.getElementById('step3NextBtn').disabled = selectedBrands.length === 0;
+    // Marka seçimi opsiyonel - stil seçildiyse önizlemeye geçilebilir
+    document.getElementById('step3NextBtn').disabled = selectedStyles.length === 0;
     document.getElementById('saveStartBtn').disabled = !selectedLocation;
 }
 
