@@ -275,14 +275,15 @@ function saveFiltersAndStart() {
     }, 500);
 }
 
-// CRITICAL: Export ALL functions to window immediately
-if (typeof window !== 'undefined') {
-    window.loadWarehouses = loadWarehouses;
-    window.getSelectedWarehouses = getSelectedWarehouses;
-    window.loadPreviewWithLocations = loadPreviewWithLocations;
-    window.selectLocation = selectLocation;
-    window.saveFiltersAndStart = saveFiltersAndStart;
-    
-    console.log('✅ Warehouse UI functions exported to window');
-}
+// CRITICAL: Export ALL functions to window DIRECTLY (no if block)
+window.loadWarehouses = loadWarehouses;
+window.getSelectedWarehouses = getSelectedWarehouses;
+window.loadPreviewWithLocations = loadPreviewWithLocations;
+window.selectLocation = selectLocation;
+window.saveFiltersAndStart = saveFiltersAndStart;
+window.toggleWarehouse = toggleWarehouse;
+window.displayWarehouses = displayWarehouses;
+window.displayPreviewWithLocations = displayPreviewWithLocations;
+
+console.log('✅ Warehouse UI functions exported to window');
 
