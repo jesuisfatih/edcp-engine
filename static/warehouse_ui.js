@@ -92,6 +92,34 @@ function toggleWarehouse(code) {
     }
     
     console.log('Selected warehouses:', selectedWarehouses);
+    
+    // Enable Step 1 (Kategoriler) if at least one warehouse selected
+    if (selectedWarehouses.length > 0) {
+        document.getElementById('step1-tab').disabled = false;
+        document.getElementById('step1-tab').classList.remove('disabled');
+        
+        // Show continue button
+        showWarehouseContinueButton();
+    } else {
+        document.getElementById('step1-tab').disabled = true;
+        document.getElementById('step1-tab').classList.add('disabled');
+    }
+}
+
+function showWarehouseContinueButton() {
+    const container = document.getElementById('warehousesList');
+    const existingBtn = document.getElementById('warehouseContinueBtn');
+    
+    if (!existingBtn) {
+        const btn = document.createElement('button');
+        btn.id = 'warehouseContinueBtn';
+        btn.className = 'btn btn-success mt-3 w-100';
+        btn.innerHTML = '<i class="fas fa-arrow-right"></i> Devam Et (Kategoriler)';
+        btn.onclick = () => {
+            document.getElementById('step1-tab').click();
+        };
+        container.parentElement.appendChild(btn);
+    }
 }
 
 function getSelectedWarehouses() {
