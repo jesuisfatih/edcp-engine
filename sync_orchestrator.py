@@ -28,11 +28,19 @@ class SyncOrchestrator:
     Coordinates all layers to sync S&S data to Shopify
     """
     
-    def __init__(self, sync_id: str, shopify_gateway: ShopifyGateway, log_callback=None):
+    def __init__(self, sync_id: str, shopify_gateway: ShopifyGateway, log_callback=None, sync_options=None):
         self.sync_id = sync_id
         self.gateway = shopify_gateway
         self.reconciler = Reconciler(shopify_gateway)
-        self.style_builder = StyleBuilder(sync_id, log_callback=self._log)
+        self.sync_options = sync_options or {}
+        
+        # Extract arbitraj settings and pass to StyleBuilder
+        arbitraj_settings = self.sync_options.get('arbitraj_settings')
+        self.style_builder = StyleBuilder(
+            sync_id, 
+            log_callback=self._log, 
+            arbitraj_settings=arbitraj_settings
+        )
         self.log_callback = log_callback
         
         self.stats = {

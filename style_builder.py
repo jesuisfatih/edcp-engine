@@ -14,15 +14,52 @@ import json
 class StyleBuilder:
     """Builds Style domain objects from cached S&S products"""
     
-    def __init__(self, sync_id: str, log_callback=None):
+    def __init__(self, sync_id: str, log_callback=None, arbitraj_settings=None):
         self.sync_id = sync_id
         self.log_callback = log_callback
+        # Arbitraj (pricing) settings from frontend
+        self.arbitraj_settings = arbitraj_settings or {}
+        self.arbitraj_enabled = self.arbitraj_settings.get('enabled', False)
+        
+        if self.arbitraj_enabled:
+            print(f"📊 Arbitraj fiyatlaması AKTIF: {self.arbitraj_settings}")
     
     def _log(self, message: str):
         """Log to callback (for UI) and console"""
         print(message)
         if self.log_callback:
             self.log_callback('info', message)
+    
+    def _apply_arbitraj_pricing(self, base_price: float) -> float:
+        """Apply arbitraj pricing rules to base price"""
+        if not self.arbitraj_enabled or base_price <= 0:
+            return base_price
+        
+        settings = self.arbitraj_settings
+        
+        # Fixed price mode
+        if settings.get('fixedPrice') is not None:
+            final_price = float(settings['fixedPrice'])
+        else:
+            # Markup mode: price * (1 + markup/100)
+            markup = float(settings.get('markupPercent', 0))
+            final_price = base_price * (1 + markup / 100)
+        
+        # Apply rounding
+        rounding_type = settings.get('roundingType', 'none')
+        if rounding_type == '99':
+            final_price = int(final_price) + 0.99
+        elif rounding_type == '90':
+            final_price = int(final_price) + 0.90
+        elif rounding_type == '00':
+            final_price = round(final_price)  # Round to nearest integer
+        
+        # Apply minimum price
+        min_price = settings.get('minimumPrice')
+        if min_price is not None and final_price < float(min_price):
+            final_price = float(min_price)
+        
+        return round(final_price, 2)
     
     def build_style_from_group(self, style_id: str) -> Optional[Style]:
         """
@@ -231,6 +268,12 @@ class StyleBuilder:
         
         if price == 0:
             print(f"   ⚠️ No price found for SKU {sku}, checked fields: {price_fields}")
+        
+        # Apply arbitraj pricing if enabled
+        original_price = price
+        price = self._apply_arbitraj_pricing(price)
+        if price != original_price and self.arbitraj_enabled:
+            print(f"   💰 Arbitraj: ${original_price:.2f} → ${price:.2f} (SKU: {sku})")
         
         # Inventory
         inventory_qty = product.get('qty') or product.get('inventory', {}).get('qty')

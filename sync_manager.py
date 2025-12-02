@@ -230,11 +230,12 @@ class SyncManager:
             except Exception as e:
                 self._add_log('warning', f'⚠️ Could not delete existing products: {e}')
             
-            # Create Sync Orchestrator
+            # Create Sync Orchestrator (with sync_options for arbitraj pricing etc.)
             orchestrator = SyncOrchestrator(
                 sync_id=self.sync_id,
                 shopify_gateway=shopify_gateway,
-                log_callback=self._add_log
+                log_callback=self._add_log,
+                sync_options=self.sync_options
             )
             
             # Execute sync with new architecture
