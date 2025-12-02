@@ -78,6 +78,12 @@ class ShopifyGateway:
         
         print(f"   Final payload: {len(variants_payload)} unique variants (from {style_part.variant_count} total)")
         
+        # DEBUG: Log all option combinations to check for duplicates
+        if len(variants_payload) <= 10:
+            print(f"   DEBUG: All variant options:")
+            for idx, v in enumerate(variants_payload):
+                print(f"     {idx+1}. {v['sku']}: {v['option1']} / {v['option2']}")
+        
         # Product payload
         payload = {
             'product': {
