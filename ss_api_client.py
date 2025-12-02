@@ -297,25 +297,38 @@ class SSActivewearClient:
         Returns: List of warehouse info with stock counts
         """
         try:
-            # Get inventory summary by warehouse
-            inventory = self.get_inventory()
+            # Get sample products to extract warehouse info
+            products = self.get_products(limit=1000)
             
-            # Group by warehouse
             warehouse_stock = {}
-            for item in inventory:
-                warehouse = item.get('warehouse', 'Unknown')
-                qty = item.get('qty', 0) or 0
+            
+            for p in products:
+                # Extract warehouse from product data
+                # S&S API may have 'warehouse', 'warehouseCode', or similar field
+                warehouse = (p.get('warehouse') or 
+                           p.get('warehouseCode') or 
+                           p.get('location') or 
+                           p.get('locationCode') or
+                           'ALL')  # Default to ALL if no warehouse specified
+                
+                qty = p.get('qty', 0) or 0
                 
                 if warehouse not in warehouse_stock:
                     warehouse_stock[warehouse] = {
-                        'code': warehouse,
-                        'name': warehouse,
+                        'code': str(warehouse),
+                        'name': str(warehouse),
                         'total_stock': 0,
                         'product_count': 0
                     }
                 
                 warehouse_stock[warehouse]['total_stock'] += qty
                 warehouse_stock[warehouse]['product_count'] += 1
+            
+            # If only one "ALL" warehouse found, use fallback
+            if len(warehouse_stock) == 1 and 'ALL' in warehouse_stock:
+                return [
+                    {'code': 'ALL', 'name': 'Tüm Lokasyonlar', 'total_stock': warehouse_stock['ALL']['total_stock'], 'product_count': warehouse_stock['ALL']['product_count']}
+                ]
             
             # Convert to list and sort by stock
             warehouses = sorted(
@@ -325,12 +338,11 @@ class SSActivewearClient:
             )
             
             return warehouses
-        except:
-            # Fallback: return common warehouses
+        except Exception as e:
+            print(f"Error getting warehouses: {e}")
+            # Fallback
             return [
-                {'code': 'CA', 'name': 'California', 'total_stock': 0, 'product_count': 0},
-                {'code': 'TX', 'name': 'Texas', 'total_stock': 0, 'product_count': 0},
-                {'code': 'NY', 'name': 'New York', 'total_stock': 0, 'product_count': 0}
+                {'code': 'ALL', 'name': 'Tüm Lokasyonlar', 'total_stock': 0, 'product_count': 0}
             ]
     
     def get_specs(self, spec_filter: Optional[str] = None,
