@@ -170,6 +170,20 @@ async function loadPreviewWithLocations() {
         const previewData = await previewResponse.json();
         const warehouseData = await warehouseResponse.json();
         
+        console.log('Preview response:', previewData);
+        console.log('Warehouse response:', warehouseData);
+        
+        // Check for errors
+        if (previewData.status === 'error') {
+            container.innerHTML = `<div class="alert alert-danger"><strong>Hata:</strong> ${previewData.message || 'Preview yüklenemedi'}</div>`;
+            return;
+        }
+        
+        if (warehouseData.status === 'error') {
+            container.innerHTML = `<div class="alert alert-danger"><strong>Hata:</strong> ${warehouseData.message || 'Lokasyonlar yüklenemedi'}</div>`;
+            return;
+        }
+        
         const productCount = previewData.count || 0;
         const warehouses = warehouseData.warehouses || [];
         
