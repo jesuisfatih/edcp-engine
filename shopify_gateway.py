@@ -134,6 +134,25 @@ class ShopifyGateway:
             }
         }
         
+        # DEBUG: Log payload to see duplicates
+        print(f"   📋 PAYLOAD DEBUG:")
+        print(f"      Product title: {payload['product']['title']}")
+        print(f"      Variants count: {len(variants_payload)}")
+        
+        # Check for duplicates in payload
+        payload_options = {}
+        for idx, v in enumerate(variants_payload):
+            option_tuple = (v['option1'], v['option2'])
+            if option_tuple in payload_options:
+                print(f"      ❌ DUPLICATE in payload: Variant {idx+1} ({v['sku']}) has same options as Variant {payload_options[option_tuple]} ({v['option1']} / {v['option2']})")
+            else:
+                payload_options[option_tuple] = idx+1
+        
+        if len(payload_options) < len(variants_payload):
+            print(f"      ⚠️ WARNING: {len(variants_payload)} variants but only {len(payload_options)} unique option combinations!")
+        else:
+            print(f"      ✅ All {len(variants_payload)} variants have unique option combinations")
+        
         # Send request
         url = f"{self.base_url}/products.json"
         response = requests.post(url, headers=self.headers, json=payload, timeout=60)
