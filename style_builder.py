@@ -217,15 +217,23 @@ class StyleBuilder:
         
         self._log(f"  ✅ Total variants built: {len(variants_list)}")
         
-        # Build product images (unique URLs)
-        image_urls = set()
+        # Build product images with color-based alt tags
+        # Use dict to track unique URLs with their color info: {url: color_name}
+        image_color_map = {}
         for product in products:
-            urls = self._extract_image_urls(product)
-            image_urls.update(urls)
+            color_name = product.get('colorName', '') or product.get('color', '')
+            images_with_color = self._extract_images_with_color(product, color_name)
+            for url, color in images_with_color:
+                if url not in image_color_map:
+                    image_color_map[url] = color
         
         images_list = []
-        for idx, url in enumerate(sorted(image_urls)):
-            images_list.append(StyleImage(url=url, position=idx))
+        for idx, (url, color_name) in enumerate(sorted(image_color_map.items())):
+            # Format alt text as #Color_ColorName for Shopify variant image linking
+            alt_text = f"#Color_{color_name}" if color_name else None
+            images_list.append(StyleImage(url=url, alt_text=alt_text, position=idx))
+        
+        self._log(f"  📸 Built {len(images_list)} images with color alt tags")
         
         # Add variants and images to style_data
         style_data['variants'] = variants_list  # CRITICAL: Add variants
@@ -366,7 +374,7 @@ class StyleBuilder:
         return metafields
     
     def _extract_image_urls(self, product: Dict) -> List[str]:
-        """Extract all image URLs from product"""
+        """Extract all image URLs from product (legacy method)"""
         urls = []
         
         # Different image fields in S&S data
@@ -381,6 +389,33 @@ class StyleBuilder:
                 urls.append(url.strip())
         
         return urls
+    
+    def _extract_images_with_color(self, product: Dict, color_name: str) -> List[tuple]:
+        """
+        Extract image URLs with their associated color name
+        Returns list of (url, color_name) tuples
+        
+        This enables Shopify variant-image linking via alt text like #Color_White
+        """
+        images = []
+        
+        # Different image fields in S&S data
+        image_fields = [
+            'colorFrontImage', 'colorBackImage', 'colorSideImage',
+            'colorDirectSideImage', 'colorOnModelFrontImage', 
+            'colorOnModelSideImage', 'colorOnModelBackImage',
+            'image', 'imageUrl', 'frontImage', 'backImage'
+        ]
+        
+        for field in image_fields:
+            url = product.get(field, '')
+            if url and url.strip():
+                # S&S URLs might be relative - make them absolute
+                if not url.startswith('http'):
+                    url = f"https://www.ssactivewear.com/{url.lstrip('/')}"
+                images.append((url.strip(), color_name))
+        
+        return images
     
     def build_all_styles(self) -> List[Style]:
         """

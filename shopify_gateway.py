@@ -121,13 +121,17 @@ class ShopifyGateway:
             for idx, v in enumerate(variants_payload):
                 print(f"     {idx+1}. {v['sku']}: {v['option1']} / {v['option2']}")
         
-        # Build images payload
+        # Build images payload with alt tags for variant-image linking
         images_payload = []
         if style_part.style.images:
             for img in style_part.style.images:
                 if img.url:
-                    images_payload.append({'src': img.url})
-            print(f"   📸 Adding {len(images_payload)} product images")
+                    img_data = {'src': img.url}
+                    # Add alt text for variant-image linking (e.g., #Color_White)
+                    if img.alt_text:
+                        img_data['alt'] = img.alt_text
+                    images_payload.append(img_data)
+            print(f"   📸 Adding {len(images_payload)} product images with color alt tags")
         
         # Product payload - CRITICAL: Must define options for Color and Size!
         payload = {
