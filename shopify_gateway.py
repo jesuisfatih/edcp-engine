@@ -9,6 +9,7 @@ Knows nothing about: Style domain, reconciliation, business rules
 import requests
 import time
 import json
+import urllib.parse
 from typing import List, Dict, Optional, Tuple
 from domain_models import StylePart
 
@@ -49,7 +50,7 @@ class ShopifyGateway:
         # CRITICAL: Delete any existing product with same title
         # This prevents "variant already exists" errors
         try:
-            search_url = f"{self.base_url}/products.json?title={requests.utils.quote(style_part.title)}&limit=10"
+            search_url = f"{self.base_url}/products.json?title={urllib.parse.quote(style_part.title)}&limit=10"
             search_resp = requests.get(search_url, headers=self.headers, timeout=30)
             
             if search_resp.status_code == 200:
