@@ -21,6 +21,8 @@ class StyleBuilder:
         Build a Style object from all cached products with given style_id
         Returns None if no products found
         """
+        print(f"  DEBUG: Building style {style_id} from cache...")
+        
         # Fetch all products for this style
         with get_db() as conn:
             cursor = conn.cursor()
@@ -32,19 +34,26 @@ class StyleBuilder:
             
             rows = cursor.fetchall()
         
+        print(f"  DEBUG: Found {len(rows)} rows in cache for style {style_id}")
+        
         if not rows:
+            print(f"  ERROR: No rows found in cache for style {style_id}")
             return None
         
         # Parse product data
         products = []
-        for row in rows:
+        for idx, row in enumerate(rows):
             try:
                 product = json.loads(row['product_data'])
                 products.append(product)
-            except:
+            except Exception as e:
+                print(f"  ERROR: Failed to parse row {idx}: {e}")
                 continue
         
+        print(f"  DEBUG: Parsed {len(products)} products from {len(rows)} rows")
+        
         if not products:
+            print(f"  ERROR: No products after parsing for style {style_id}")
             return None
         
         # Use first product as base for style-level attributes
@@ -67,16 +76,27 @@ class StyleBuilder:
         # Build variants
         seen_option_keys = set()
         
-        for product in products:
-            variant = self._build_variant(product)
-            
-            # Deduplicate by option key
-            if variant.option_key in seen_option_keys:
-                print(f"  Skipping duplicate variant: {variant.sku} ({variant.option_key})")
+        print(f"  DEBUG: Building variants from {len(products)} products...")
+        
+        for idx, product in enumerate(products):
+            try:
+                variant = self._build_variant(product)
+                
+                # Deduplicate by option key
+                if variant.option_key in seen_option_keys:
+                    print(f"  Skipping duplicate variant: {variant.sku} ({variant.option_key})")
+                    continue
+                
+                seen_option_keys.add(variant.option_key)
+                style.variants.append(variant)
+                
+                if idx < 3:  # Log first 3 variants
+                    print(f"  DEBUG: Variant {idx+1}: {variant.sku} - {variant.color_name} / {variant.size_name}")
+            except Exception as e:
+                print(f"  ERROR: Failed to build variant {idx}: {e}")
                 continue
-            
-            seen_option_keys.add(variant.option_key)
-            style.variants.append(variant)
+        
+        print(f"  DEBUG: Total variants built: {len(style.variants)}")
         
         # Build product images (unique URLs)
         image_urls = set()
