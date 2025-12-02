@@ -304,10 +304,69 @@ class ShopifyGateway:
             created_variants.extend(additional)
             print(f"   📦 Total variants: {len(created_variants)}")
         
-        # Assign images to variants
-        self._assign_images_to_variants_graphql(product_gid, product)
+        # Wait for media processing (Shopify processes files asynchronously)
+        if files:
+            print(f"   ⏳ Waiting for media processing...")
+            time.sleep(3)
+            
+            # Re-fetch product with media
+            fresh_product = self._get_product_with_media(product_gid)
+            if fresh_product:
+                self._assign_images_to_variants_graphql(product_gid, fresh_product)
+            else:
+                print(f"   ⚠️ Could not fetch media, skipping variant image assignment")
+        else:
+            print(f"   ⚠️ No images to assign")
         
         return product_id, product_gid, created_variants
+    
+    def _get_product_with_media(self, product_gid: str) -> Optional[Dict]:
+        """Fetch product with media for variant image assignment"""
+        query = """
+        query getProductMedia($id: ID!) {
+            product(id: $id) {
+                id
+                variants(first: 250) {
+                    edges {
+                        node {
+                            id
+                            selectedOptions {
+                                name
+                                value
+                            }
+                        }
+                    }
+                }
+                media(first: 100) {
+                    edges {
+                        node {
+                            ... on MediaImage {
+                                id
+                                alt
+                                image {
+                                    url
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        """
+        
+        try:
+            result = self._execute_graphql(query, {'id': product_gid})
+            product = result.get('data', {}).get('product')
+            
+            if product:
+                media_edges = product.get('media', {}).get('edges', [])
+                print(f"   📸 Found {len(media_edges)} media items")
+                return product
+            
+            return None
+        except Exception as e:
+            print(f"   ⚠️ Error fetching product media: {e}")
+            return None
     
     def _fetch_remaining_variants(self, product_gid: str, already_fetched: int) -> List[Dict]:
         """Fetch remaining variants using cursor pagination"""
