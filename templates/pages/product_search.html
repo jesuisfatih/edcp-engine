@@ -1,0 +1,558 @@
+{% extends "layout.html" %}
+
+{% block title %}Ürün Arama{% endblock %}
+
+{% block extra_css %}
+<style>
+    .product-card {
+        border: none;
+        border-radius: 12px;
+        overflow: hidden;
+        transition: all 0.3s ease;
+        cursor: pointer;
+        height: 100%;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+    .product-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+    }
+    .product-card-img {
+        height: 180px;
+        object-fit: contain;
+        background: #f8f9fa;
+        padding: 15px;
+    }
+    .product-card-body {
+        padding: 15px;
+    }
+    .product-card-brand {
+        font-size: 11px;
+        color: #6c757d;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .product-card-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: #333;
+        margin: 5px 0;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+    .product-card-price {
+        font-size: 16px;
+        font-weight: 700;
+        color: #28a745;
+    }
+    
+    /* Detail Modal */
+    .product-main-image {
+        width: 100%;
+        max-height: 450px;
+        object-fit: contain;
+        background: #f8f9fa;
+        border-radius: 12px;
+        padding: 20px;
+    }
+    .product-thumbnails {
+        display: flex;
+        gap: 8px;
+        margin-top: 12px;
+        flex-wrap: wrap;
+    }
+    .product-thumbnail {
+        width: 70px;
+        height: 70px;
+        object-fit: contain;
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 5px;
+        cursor: pointer;
+        border: 2px solid transparent;
+        transition: all 0.2s;
+    }
+    .product-thumbnail:hover,
+    .product-thumbnail.active {
+        border-color: var(--accent-color);
+    }
+    .product-info h1 {
+        font-size: 24px;
+        font-weight: 700;
+        margin-bottom: 10px;
+    }
+    .product-price-large {
+        font-size: 28px;
+        font-weight: 700;
+        color: #28a745;
+    }
+    .meta-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+        margin-top: 20px;
+    }
+    .meta-item {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 10px 12px;
+        border-radius: 8px;
+        font-size: 12px;
+    }
+    .meta-item .key {
+        font-size: 10px;
+        opacity: 0.8;
+        text-transform: uppercase;
+    }
+    .meta-item .value {
+        font-weight: 600;
+        margin-top: 2px;
+        word-break: break-word;
+    }
+    .variant-table {
+        font-size: 13px;
+    }
+    .stock-badge {
+        padding: 2px 8px;
+        border-radius: 10px;
+        font-size: 11px;
+        font-weight: 600;
+    }
+    .stock-high { background: #d4edda; color: #155724; }
+    .stock-medium { background: #fff3cd; color: #856404; }
+    .stock-low { background: #f8d7da; color: #721c24; }
+    .stock-out { background: #e9ecef; color: #6c757d; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2><i class="fas fa-search"></i> Ürün Arama</h2>
+</div>
+
+<!-- Search Box -->
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="row align-items-center">
+            <div class="col-md-9">
+                <div class="input-group input-group-lg">
+                    <span class="input-group-text bg-primary text-white">
+                        <i class="fas fa-search"></i>
+                    </span>
+                    <input type="text" class="form-control" id="searchInput" 
+                           placeholder="Ürün adı, SKU veya stil numarası ile ara...">
+                    <button class="btn btn-primary" id="searchBtn">
+                        <i class="fas fa-search"></i> Ara
+                    </button>
+                </div>
+            </div>
+            <div class="col-md-3 text-end">
+                <span class="text-muted" id="resultCount"></span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Cache Status -->
+<div class="alert alert-info" id="cacheStatus" style="display: none;">
+    <i class="fas fa-database"></i> <span id="cacheStatusText"></span>
+    <button class="btn btn-sm btn-outline-primary float-end" onclick="rebuildCache()">
+        <i class="fas fa-sync"></i> Cache Yenile
+    </button>
+</div>
+
+<!-- Results -->
+<div id="searchResults">
+    <!-- Initial State -->
+    <div id="initialState" class="text-center py-5">
+        <i class="fas fa-box-open fa-4x text-muted mb-3"></i>
+        <h4 class="text-muted">S&S Activewear Ürün Kataloğu</h4>
+        <p class="text-muted">Ürün adı, SKU veya stil numarası yazarak arama yapın</p>
+        <div class="mt-3">
+            <span class="badge bg-secondary me-2">Örnek: "Gildan 5000"</span>
+            <span class="badge bg-secondary me-2">Örnek: "G500"</span>
+            <span class="badge bg-secondary">Örnek: "Heavy Cotton"</span>
+        </div>
+    </div>
+    
+    <!-- Loading -->
+    <div id="loadingState" class="text-center py-5" style="display: none;">
+        <div class="spinner-border text-primary" style="width: 3rem; height: 3rem;"></div>
+        <p class="mt-3 text-muted">Aranıyor...</p>
+    </div>
+    
+    <!-- No Results -->
+    <div id="noResults" class="text-center py-5" style="display: none;">
+        <i class="fas fa-search fa-3x text-muted mb-3"></i>
+        <h5 class="text-muted">Sonuç bulunamadı</h5>
+    </div>
+    
+    <!-- Results Grid -->
+    <div class="row" id="resultsGrid"></div>
+    
+    <!-- Load More -->
+    <div class="text-center mt-4" id="loadMoreContainer" style="display: none;">
+        <button class="btn btn-outline-primary" id="loadMoreBtn">
+            <i class="fas fa-plus"></i> Daha Fazla
+        </button>
+    </div>
+</div>
+
+<!-- Product Detail Modal -->
+<div class="modal fade" id="productModal" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="productModalTitle">Ürün Detayı</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="productModalBody">
+                <!-- Content loaded dynamically -->
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let currentQuery = '';
+let currentOffset = 0;
+let isLoading = false;
+
+document.addEventListener('DOMContentLoaded', function() {
+    checkCache();
+    
+    // Search on enter
+    document.getElementById('searchInput').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') doSearch();
+    });
+    
+    // Search button
+    document.getElementById('searchBtn').addEventListener('click', doSearch);
+    
+    // Load more
+    document.getElementById('loadMoreBtn').addEventListener('click', loadMore);
+    
+    // Live search
+    let timeout;
+    document.getElementById('searchInput').addEventListener('input', function() {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => {
+            if (this.value.length >= 2) doSearch();
+            else if (this.value.length === 0) showInitial();
+        }, 500);
+    });
+});
+
+async function checkCache() {
+    try {
+        const response = await fetch('/api/search-cache/status');
+        const data = await response.json();
+        
+        if (data.isEmpty) {
+            document.getElementById('cacheStatus').style.display = 'block';
+            document.getElementById('cacheStatusText').textContent = 'İlk kullanım için cache hazırlanıyor...';
+            await rebuildCache();
+        } else {
+            document.getElementById('cacheStatus').style.display = 'block';
+            document.getElementById('cacheStatusText').textContent = `${data.count.toLocaleString()} ürün indexlendi`;
+        }
+    } catch (error) {
+        console.error('Cache check error:', error);
+    }
+}
+
+async function rebuildCache() {
+    document.getElementById('cacheStatusText').textContent = 'Cache yenileniyor... (bu biraz sürebilir)';
+    
+    try {
+        const response = await fetch('/api/search-cache/rebuild', { method: 'POST' });
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            document.getElementById('cacheStatusText').textContent = `${data.count.toLocaleString()} ürün indexlendi`;
+        }
+    } catch (error) {
+        document.getElementById('cacheStatusText').textContent = 'Cache hatası!';
+    }
+}
+
+function showInitial() {
+    document.getElementById('initialState').style.display = 'block';
+    document.getElementById('loadingState').style.display = 'none';
+    document.getElementById('noResults').style.display = 'none';
+    document.getElementById('resultsGrid').innerHTML = '';
+    document.getElementById('loadMoreContainer').style.display = 'none';
+    document.getElementById('resultCount').textContent = '';
+}
+
+function showLoading() {
+    document.getElementById('initialState').style.display = 'none';
+    document.getElementById('loadingState').style.display = 'block';
+    document.getElementById('noResults').style.display = 'none';
+}
+
+function showNoResults() {
+    document.getElementById('initialState').style.display = 'none';
+    document.getElementById('loadingState').style.display = 'none';
+    document.getElementById('noResults').style.display = 'block';
+    document.getElementById('resultsGrid').innerHTML = '';
+}
+
+async function doSearch() {
+    const query = document.getElementById('searchInput').value.trim();
+    if (query.length < 2) return;
+    
+    currentQuery = query;
+    currentOffset = 0;
+    showLoading();
+    
+    await search(false);
+}
+
+async function loadMore() {
+    await search(true);
+}
+
+async function search(append) {
+    if (isLoading) return;
+    isLoading = true;
+    
+    try {
+        const response = await fetch('/api/search-products', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                query: currentQuery,
+                limit: 24,
+                offset: append ? currentOffset : 0
+            })
+        });
+        const data = await response.json();
+        
+        document.getElementById('loadingState').style.display = 'none';
+        
+        if (data.status === 'success') {
+            if (data.results.length === 0 && !append) {
+                showNoResults();
+            } else {
+                document.getElementById('initialState').style.display = 'none';
+                document.getElementById('noResults').style.display = 'none';
+                
+                const grid = document.getElementById('resultsGrid');
+                const html = data.results.map(p => createProductCard(p)).join('');
+                
+                if (append) {
+                    grid.innerHTML += html;
+                } else {
+                    grid.innerHTML = html;
+                }
+                
+                currentOffset = append ? currentOffset + data.results.length : data.results.length;
+                document.getElementById('loadMoreContainer').style.display = data.hasMore ? 'block' : 'none';
+                document.getElementById('resultCount').textContent = `${data.total} sonuç`;
+            }
+        }
+    } catch (error) {
+        console.error('Search error:', error);
+        showNoResults();
+    }
+    
+    isLoading = false;
+}
+
+function createProductCard(product) {
+    const image = product.image || 'https://via.placeholder.com/200x200?text=No+Image';
+    const price = product.basePrice ? `$${parseFloat(product.basePrice).toFixed(2)}` : '-';
+    
+    return `
+        <div class="col-xl-2 col-lg-3 col-md-4 col-sm-6 mb-4">
+            <div class="card product-card" onclick="showProductDetail('${product.styleID}')">
+                <img src="${image}" class="product-card-img" alt="${product.styleName}"
+                     onerror="this.src='https://via.placeholder.com/200x200?text=No+Image'">
+                <div class="product-card-body">
+                    <div class="product-card-brand">${product.brandName || ''}</div>
+                    <div class="product-card-title">${product.title || product.styleName}</div>
+                    <div class="d-flex justify-content-between align-items-center mt-2">
+                        <span class="product-card-price">${price}</span>
+                        <small class="text-muted">${product.variantCount} varyant</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+async function showProductDetail(styleId) {
+    const modal = new bootstrap.Modal(document.getElementById('productModal'));
+    const body = document.getElementById('productModalBody');
+    
+    body.innerHTML = '<div class="text-center py-5"><div class="spinner-border"></div></div>';
+    modal.show();
+    
+    try {
+        const response = await fetch(`/api/product-detail/${styleId}`);
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            renderProductDetail(data.product);
+        } else {
+            body.innerHTML = `<div class="alert alert-danger">${data.message}</div>`;
+        }
+    } catch (error) {
+        body.innerHTML = '<div class="alert alert-danger">Yükleme hatası</div>';
+    }
+}
+
+function renderProductDetail(product) {
+    document.getElementById('productModalTitle').textContent = `${product.brandName} ${product.styleName}`;
+    
+    const firstColor = product.colors[0] || 'Default';
+    const images = product.images[firstColor] || Object.values(product.images)[0] || [];
+    const mainImage = images[0] || 'https://via.placeholder.com/500x500?text=No+Image';
+    
+    const priceDisplay = product.minPrice === product.maxPrice
+        ? `$${product.minPrice.toFixed(2)}`
+        : `$${product.minPrice.toFixed(2)} - $${product.maxPrice.toFixed(2)}`;
+    
+    document.getElementById('productModalBody').innerHTML = `
+        <div class="row">
+            <div class="col-md-5">
+                <img src="${mainImage}" class="product-main-image" id="mainImage"
+                     onerror="this.src='https://via.placeholder.com/500x500?text=No+Image'">
+                <div class="product-thumbnails">
+                    ${images.slice(0, 6).map((url, i) => `
+                        <img src="${url}" class="product-thumbnail ${i === 0 ? 'active' : ''}"
+                             onclick="selectImage(this, '${url}')"
+                             onerror="this.style.display='none'">
+                    `).join('')}
+                </div>
+                
+                <div class="mt-3">
+                    <label class="form-label fw-bold">Renkler (${product.colors.length})</label>
+                    <div class="d-flex flex-wrap gap-1">
+                        ${product.colors.map((color, i) => `
+                            <button class="btn btn-sm ${i === 0 ? 'btn-primary' : 'btn-outline-secondary'}"
+                                    onclick="selectColor('${color}', ${JSON.stringify(product.images).replace(/"/g, '&quot;')})">
+                                ${color}
+                            </button>
+                        `).join('')}
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-7">
+                <div class="product-info">
+                    <small class="text-muted text-uppercase">${product.brandName}</small>
+                    <h1>${product.title || product.styleName}</h1>
+                    <span class="badge bg-primary">${product.styleName}</span>
+                    
+                    <div class="product-price-large mt-3">${priceDisplay}</div>
+                    
+                    ${product.description ? `<p class="mt-3">${product.description}</p>` : ''}
+                    
+                    <div class="row mt-4">
+                        <div class="col-4">
+                            <div class="text-center p-3 bg-light rounded">
+                                <h4>${product.totalVariants}</h4>
+                                <small class="text-muted">Varyant</small>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="text-center p-3 bg-light rounded">
+                                <h4>${product.colors.length}</h4>
+                                <small class="text-muted">Renk</small>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="text-center p-3 bg-light rounded">
+                                <h4>${product.sizes.length}</h4>
+                                <small class="text-muted">Beden</small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Variants -->
+                    <h5 class="mt-4"><i class="fas fa-list"></i> Varyantlar</h5>
+                    <div style="max-height: 300px; overflow-y: auto;">
+                        <table class="table table-sm variant-table">
+                            <thead class="sticky-top bg-white">
+                                <tr>
+                                    <th>SKU</th>
+                                    <th>Renk</th>
+                                    <th>Beden</th>
+                                    <th>Fiyat</th>
+                                    <th>Stok</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${product.variants.map(v => `
+                                    <tr>
+                                        <td><code>${v.sku}</code></td>
+                                        <td>${v.colorName}</td>
+                                        <td>${v.sizeName}</td>
+                                        <td>$${(v.piecePrice || 0).toFixed(2)}</td>
+                                        <td><span class="stock-badge ${getStockClass(v.inventory)}">${v.inventory}</span></td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- Metafields -->
+                    <h5 class="mt-4"><i class="fas fa-database"></i> API Metafield'lar</h5>
+                    <div class="meta-grid">
+                        ${Object.entries(product.metafields).slice(0, 30).map(([k, v]) => `
+                            <div class="meta-item">
+                                <div class="key">${formatKey(k)}</div>
+                                <div class="value">${formatValue(v)}</div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function selectImage(el, url) {
+    document.querySelectorAll('.product-thumbnail').forEach(t => t.classList.remove('active'));
+    el.classList.add('active');
+    document.getElementById('mainImage').src = url;
+}
+
+function selectColor(color, images) {
+    const colorImages = images[color] || [];
+    if (colorImages.length > 0) {
+        document.getElementById('mainImage').src = colorImages[0];
+    }
+    event.target.parentElement.querySelectorAll('button').forEach(b => {
+        b.classList.remove('btn-primary');
+        b.classList.add('btn-outline-secondary');
+    });
+    event.target.classList.remove('btn-outline-secondary');
+    event.target.classList.add('btn-primary');
+}
+
+function getStockClass(stock) {
+    if (stock === 0) return 'stock-out';
+    if (stock < 10) return 'stock-low';
+    if (stock < 50) return 'stock-medium';
+    return 'stock-high';
+}
+
+function formatKey(key) {
+    return key.replace(/([A-Z])/g, ' $1').trim();
+}
+
+function formatValue(value) {
+    if (typeof value === 'boolean') return value ? '✓' : '✗';
+    if (typeof value === 'number') return value.toLocaleString();
+    return String(value).substring(0, 50);
+}
+</script>
+{% endblock %}
+

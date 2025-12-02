@@ -1,0 +1,172 @@
+{% extends "layout.html" %}
+
+{% block title %}Otomatik Güncelleme{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2><i class="fas fa-clock"></i> Otomatik Güncelleme</h2>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-cog"></i> Zamanlama Ayarları</h5>
+            </div>
+            <div class="card-body">
+                <div class="form-check form-switch mb-4">
+                    <input class="form-check-input" type="checkbox" id="autoSyncEnabled" style="width: 3em; height: 1.5em;">
+                    <label class="form-check-label fs-5" for="autoSyncEnabled">Otomatik Güncelleme Aktif</label>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Güncelleme Sıklığı</label>
+                    <select class="form-select" id="syncInterval">
+                        <option value="30">Her 30 dakika</option>
+                        <option value="60" selected>Her saat</option>
+                        <option value="120">Her 2 saat</option>
+                        <option value="360">Her 6 saat</option>
+                        <option value="720">Her 12 saat</option>
+                        <option value="1440">Günde bir</option>
+                    </select>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Başlangıç Saati</label>
+                    <input type="time" class="form-control" id="startTime" value="00:00">
+                </div>
+                
+                <div class="form-check form-switch mb-3">
+                    <input class="form-check-input" type="checkbox" id="notifyOnComplete" checked>
+                    <label class="form-check-label" for="notifyOnComplete">Tamamlandığında Bildir</label>
+                </div>
+                
+                <div class="form-check form-switch mb-3">
+                    <input class="form-check-input" type="checkbox" id="notifyOnError" checked>
+                    <label class="form-check-label" for="notifyOnError">Hata Olursa Bildir</label>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-info-circle"></i> Durum</h5>
+            </div>
+            <div class="card-body">
+                <div class="d-flex justify-content-between mb-3">
+                    <span>Durum:</span>
+                    <span id="autoSyncStatus" class="badge bg-secondary">Pasif</span>
+                </div>
+                <div class="d-flex justify-content-between mb-3">
+                    <span>Son Güncelleme:</span>
+                    <span id="lastAutoSync">-</span>
+                </div>
+                <div class="d-flex justify-content-between mb-3">
+                    <span>Sonraki Güncelleme:</span>
+                    <span id="nextAutoSync">-</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-history"></i> Son Otomatik Güncellemeler</h5>
+            </div>
+            <div class="card-body">
+                <div id="autoSyncHistory">
+                    <p class="text-muted">Henüz otomatik güncelleme yapılmadı</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card mt-4">
+    <div class="card-body text-center">
+        <button class="btn btn-accent btn-lg" onclick="saveAutoSyncSettings()">
+            <i class="fas fa-save"></i> Ayarları Kaydet
+        </button>
+        <button class="btn btn-outline-primary btn-lg ms-2" onclick="runManualSync()">
+            <i class="fas fa-play"></i> Şimdi Çalıştır
+        </button>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    loadAutoSyncStatus();
+    setInterval(loadAutoSyncStatus, 30000); // Refresh every 30 seconds
+});
+
+async function loadAutoSyncStatus() {
+    try {
+        const response = await fetch('/api/auto-sync/status');
+        const data = await response.json();
+        
+        if (data.enabled) {
+            document.getElementById('autoSyncEnabled').checked = true;
+            document.getElementById('autoSyncStatus').textContent = 'Aktif';
+            document.getElementById('autoSyncStatus').className = 'badge bg-success';
+        } else {
+            document.getElementById('autoSyncEnabled').checked = false;
+            document.getElementById('autoSyncStatus').textContent = 'Pasif';
+            document.getElementById('autoSyncStatus').className = 'badge bg-secondary';
+        }
+        
+        if (data.last_run) {
+            document.getElementById('lastAutoSync').textContent = new Date(data.last_run).toLocaleString();
+        }
+        
+        if (data.next_run) {
+            document.getElementById('nextAutoSync').textContent = new Date(data.next_run).toLocaleString();
+        }
+    } catch (error) {
+        console.error('Error loading auto sync status:', error);
+    }
+}
+
+async function saveAutoSyncSettings() {
+    const enabled = document.getElementById('autoSyncEnabled').checked;
+    const interval = document.getElementById('syncInterval').value;
+    
+    try {
+        if (enabled) {
+            const response = await fetch('/api/auto-sync/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ interval_minutes: parseInt(interval) })
+            });
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                alert('Otomatik güncelleme aktif edildi!');
+                loadAutoSyncStatus();
+            } else {
+                alert('Hata: ' + data.message);
+            }
+        } else {
+            const response = await fetch('/api/auto-sync/stop', { method: 'POST' });
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                alert('Otomatik güncelleme durduruldu!');
+                loadAutoSyncStatus();
+            } else {
+                alert('Hata: ' + data.message);
+            }
+        }
+    } catch (error) {
+        alert('Hata: ' + error.message);
+    }
+}
+
+function runManualSync() {
+    window.location.href = '/sync?autostart=1';
+}
+</script>
+{% endblock %}
+

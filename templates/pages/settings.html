@@ -1,0 +1,171 @@
+{% extends "layout.html" %}
+
+{% block title %}API Ayarları{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2><i class="fas fa-cog"></i> API Ayarları</h2>
+</div>
+
+<div class="row">
+    <!-- S&S Activewear Config -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-warehouse"></i> S&S Activewear API</h5>
+            </div>
+            <div class="card-body">
+                <form id="ssConfigForm">
+                    <div class="mb-3">
+                        <label class="form-label">Account Number</label>
+                        <input type="text" class="form-control" id="ss_account_number" placeholder="Hesap numarası">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">API Key</label>
+                        <input type="password" class="form-control" id="ss_api_key" placeholder="API anahtarı">
+                    </div>
+                    <button type="button" class="btn btn-primary" onclick="testSSConnection()">
+                        <i class="fas fa-plug"></i> Bağlantıyı Test Et
+                    </button>
+                </form>
+                <div id="ssTestResult" class="mt-3"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Shopify Config -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fab fa-shopify"></i> Shopify API</h5>
+            </div>
+            <div class="card-body">
+                <form id="shopifyConfigForm">
+                    <div class="mb-3">
+                        <label class="form-label">Shop Domain</label>
+                        <input type="text" class="form-control" id="shopify_domain" placeholder="your-store.myshopify.com">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Access Token</label>
+                        <input type="password" class="form-control" id="shopify_token" placeholder="shpat_xxxxx">
+                    </div>
+                    <button type="button" class="btn btn-success" onclick="testShopifyConnection()">
+                        <i class="fas fa-plug"></i> Bağlantıyı Test Et
+                    </button>
+                </form>
+                <div id="shopifyTestResult" class="mt-3"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Save Button -->
+<div class="card mt-4">
+    <div class="card-body text-center">
+        <button type="button" class="btn btn-accent btn-lg" onclick="saveAllConfig()">
+            <i class="fas fa-save"></i> Tüm Ayarları Kaydet
+        </button>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    loadConfig();
+});
+
+async function loadConfig() {
+    try {
+        const response = await fetch('/api/config');
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            document.getElementById('ss_account_number').value = data.ss_config?.account_number || '';
+            document.getElementById('ss_api_key').value = data.ss_config?.api_key || '';
+            document.getElementById('shopify_domain').value = data.shopify_config?.shop_domain || '';
+            document.getElementById('shopify_token').value = data.shopify_config?.access_token || '';
+        }
+    } catch (error) {
+        console.error('Error loading config:', error);
+    }
+}
+
+async function testSSConnection() {
+    const resultDiv = document.getElementById('ssTestResult');
+    resultDiv.innerHTML = '<div class="spinner-border spinner-border-sm"></div> Test ediliyor...';
+    
+    try {
+        const response = await fetch('/api/test-connection', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                type: 'ss',
+                account_number: document.getElementById('ss_account_number').value,
+                api_key: document.getElementById('ss_api_key').value
+            })
+        });
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            resultDiv.innerHTML = '<div class="alert alert-success"><i class="fas fa-check"></i> Bağlantı başarılı!</div>';
+        } else {
+            resultDiv.innerHTML = `<div class="alert alert-danger"><i class="fas fa-times"></i> ${data.message}</div>`;
+        }
+    } catch (error) {
+        resultDiv.innerHTML = `<div class="alert alert-danger"><i class="fas fa-times"></i> Bağlantı hatası</div>`;
+    }
+}
+
+async function testShopifyConnection() {
+    const resultDiv = document.getElementById('shopifyTestResult');
+    resultDiv.innerHTML = '<div class="spinner-border spinner-border-sm"></div> Test ediliyor...';
+    
+    try {
+        const response = await fetch('/api/test-connection', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                type: 'shopify',
+                shop_domain: document.getElementById('shopify_domain').value,
+                access_token: document.getElementById('shopify_token').value
+            })
+        });
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            resultDiv.innerHTML = '<div class="alert alert-success"><i class="fas fa-check"></i> Bağlantı başarılı!</div>';
+        } else {
+            resultDiv.innerHTML = `<div class="alert alert-danger"><i class="fas fa-times"></i> ${data.message}</div>`;
+        }
+    } catch (error) {
+        resultDiv.innerHTML = `<div class="alert alert-danger"><i class="fas fa-times"></i> Bağlantı hatası</div>`;
+    }
+}
+
+async function saveAllConfig() {
+    try {
+        const response = await fetch('/api/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                ss_account_number: document.getElementById('ss_account_number').value,
+                ss_api_key: document.getElementById('ss_api_key').value,
+                shopify_domain: document.getElementById('shopify_domain').value,
+                shopify_token: document.getElementById('shopify_token').value
+            })
+        });
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            alert('Ayarlar başarıyla kaydedildi!');
+        } else {
+            alert('Hata: ' + data.message);
+        }
+    } catch (error) {
+        alert('Kaydetme hatası: ' + error.message);
+    }
+}
+</script>
+{% endblock %}
+

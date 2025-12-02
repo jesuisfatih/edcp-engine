@@ -1,0 +1,176 @@
+{% extends "layout.html" %}
+
+{% block title %}Aktarım Ayarları{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2><i class="fas fa-tasks"></i> Aktarım Ayarları</h2>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <!-- Sync Mode -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-sync"></i> Senkronizasyon Modu</h5>
+            </div>
+            <div class="card-body">
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="radio" name="syncMode" id="syncModeCreate" value="create" checked>
+                    <label class="form-check-label" for="syncModeCreate">
+                        <strong>Sadece Oluştur</strong>
+                        <br><small class="text-muted">Yeni ürünleri oluşturur, mevcut ürünleri güncellemez</small>
+                    </label>
+                </div>
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="radio" name="syncMode" id="syncModeUpdate" value="update">
+                    <label class="form-check-label" for="syncModeUpdate">
+                        <strong>Oluştur ve Güncelle</strong>
+                        <br><small class="text-muted">Yeni ürünleri oluşturur, mevcutları günceller</small>
+                    </label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="syncMode" id="syncModeSync" value="sync">
+                    <label class="form-check-label" for="syncModeSync">
+                        <strong>Tam Senkronizasyon</strong>
+                        <br><small class="text-muted">API'de olmayan Shopify ürünlerini de siler</small>
+                    </label>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Inventory Settings -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-boxes"></i> Stok Ayarları</h5>
+            </div>
+            <div class="card-body">
+                <div class="form-check form-switch mb-3">
+                    <input class="form-check-input" type="checkbox" id="syncInventory" checked>
+                    <label class="form-check-label" for="syncInventory">Stokları Senkronize Et</label>
+                </div>
+                <div class="form-check form-switch mb-3">
+                    <input class="form-check-input" type="checkbox" id="trackInventory" checked>
+                    <label class="form-check-label" for="trackInventory">Shopify Stok Takibi</label>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Minimum Stok Uyarısı</label>
+                    <input type="number" class="form-control" id="lowStockThreshold" value="10">
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <!-- Product Settings -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-box"></i> Ürün Ayarları</h5>
+            </div>
+            <div class="card-body">
+                <div class="form-check form-switch mb-3">
+                    <input class="form-check-input" type="checkbox" id="publishProducts" checked>
+                    <label class="form-check-label" for="publishProducts">Ürünleri Yayınla (Active)</label>
+                </div>
+                <div class="form-check form-switch mb-3">
+                    <input class="form-check-input" type="checkbox" id="syncImages" checked>
+                    <label class="form-check-label" for="syncImages">Görselleri Aktır</label>
+                </div>
+                <div class="form-check form-switch mb-3">
+                    <input class="form-check-input" type="checkbox" id="syncMetafields" checked>
+                    <label class="form-check-label" for="syncMetafields">Metafield'ları Aktar</label>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Ürün Başlığı Formatı</label>
+                    <select class="form-select" id="titleFormat">
+                        <option value="brand_style">{Brand} {StyleName}</option>
+                        <option value="style_only">{StyleName}</option>
+                        <option value="brand_style_id">{Brand} {StyleName} ({StyleID})</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Collection Settings -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-folder"></i> Koleksiyon Ayarları</h5>
+            </div>
+            <div class="card-body">
+                <div class="form-check form-switch mb-3">
+                    <input class="form-check-input" type="checkbox" id="createBrandCollections" checked>
+                    <label class="form-check-label" for="createBrandCollections">Marka Koleksiyonları Oluştur</label>
+                </div>
+                <div class="form-check form-switch mb-3">
+                    <input class="form-check-input" type="checkbox" id="createCategoryCollections" checked>
+                    <label class="form-check-label" for="createCategoryCollections">Kategori Koleksiyonları Oluştur</label>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card mt-4">
+    <div class="card-body text-center">
+        <button class="btn btn-accent btn-lg" onclick="saveSyncSettings()">
+            <i class="fas fa-save"></i> Ayarları Kaydet
+        </button>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', loadSyncSettings);
+
+async function loadSyncSettings() {
+    try {
+        const response = await fetch('/api/config');
+        const data = await response.json();
+        
+        if (data.sync_options) {
+            const opts = data.sync_options;
+            // Load saved settings
+            if (opts.sync_mode) {
+                document.querySelector(`input[name="syncMode"][value="${opts.sync_mode}"]`).checked = true;
+            }
+        }
+    } catch (error) {
+        console.error('Error loading settings:', error);
+    }
+}
+
+async function saveSyncSettings() {
+    const settings = {
+        sync_mode: document.querySelector('input[name="syncMode"]:checked').value,
+        sync_inventory: document.getElementById('syncInventory').checked,
+        track_inventory: document.getElementById('trackInventory').checked,
+        low_stock_threshold: parseInt(document.getElementById('lowStockThreshold').value),
+        publish_products: document.getElementById('publishProducts').checked,
+        sync_images: document.getElementById('syncImages').checked,
+        sync_metafields: document.getElementById('syncMetafields').checked,
+        title_format: document.getElementById('titleFormat').value,
+        create_brand_collections: document.getElementById('createBrandCollections').checked,
+        create_category_collections: document.getElementById('createCategoryCollections').checked
+    };
+    
+    try {
+        const response = await fetch('/api/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sync_options: settings })
+        });
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            alert('Ayarlar kaydedildi!');
+        } else {
+            alert('Hata: ' + data.message);
+        }
+    } catch (error) {
+        alert('Kaydetme hatası: ' + error.message);
+    }
+}
+</script>
+{% endblock %}
+

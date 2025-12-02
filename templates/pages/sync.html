@@ -1,0 +1,241 @@
+{% extends "layout.html" %}
+
+{% block title %}Aktarım{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2><i class="fas fa-play-circle"></i> Aktarım</h2>
+</div>
+
+<!-- Sync Controls -->
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="row align-items-center">
+            <div class="col-md-6">
+                <h5 class="mb-0" id="syncStatusText">Aktarım Durumu: Bekliyor</h5>
+            </div>
+            <div class="col-md-6 text-end">
+                <button class="btn btn-success btn-lg me-2" id="startSyncBtn" onclick="startSync()">
+                    <i class="fas fa-play"></i> Aktarımı Başlat
+                </button>
+                <button class="btn btn-danger btn-lg" id="stopSyncBtn" onclick="stopSync()" style="display: none;">
+                    <i class="fas fa-stop"></i> Durdur
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Progress -->
+<div class="card mb-4" id="progressCard" style="display: none;">
+    <div class="card-body">
+        <div class="d-flex justify-content-between mb-2">
+            <span id="progressText">0 / 0</span>
+            <span id="progressPercent">0%</span>
+        </div>
+        <div class="progress" style="height: 30px;">
+            <div class="progress-bar progress-bar-striped progress-bar-animated" id="progressBar" 
+                 role="progressbar" style="width: 0%"></div>
+        </div>
+        <div class="mt-2 text-muted" id="currentProduct">-</div>
+    </div>
+</div>
+
+<!-- Console Output -->
+<div class="card">
+    <div class="card-header d-flex justify-content-between">
+        <h5 class="mb-0"><i class="fas fa-terminal"></i> Aktarım Detayları</h5>
+        <button class="btn btn-sm btn-outline-secondary" onclick="clearConsole()">
+            <i class="fas fa-trash"></i> Temizle
+        </button>
+    </div>
+    <div class="card-body p-0">
+        <div class="console-output" id="consoleOutput">
+            <div class="console-line">
+                <span class="console-prompt">$</span>
+                <span class="console-text">Aktarım başlatıldığında loglar burada görünecek...</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Actions -->
+<div class="card mt-4">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="fas fa-tools"></i> Hızlı İşlemler</h5>
+    </div>
+    <div class="card-body">
+        <div class="d-flex gap-2 flex-wrap">
+            <button class="btn btn-outline-warning" onclick="rollbackLastSync()">
+                <i class="fas fa-undo"></i> Son Aktarımı Geri Al
+            </button>
+            <button class="btn btn-outline-danger" onclick="deleteAllProducts()">
+                <i class="fas fa-trash-alt"></i> Tüm Ürünleri Sil
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let syncInterval = null;
+let autoStart = new URLSearchParams(window.location.search).get('autostart');
+
+document.addEventListener('DOMContentLoaded', function() {
+    if (autoStart === '1') {
+        startSync();
+    }
+    checkSyncStatus();
+});
+
+async function startSync() {
+    document.getElementById('startSyncBtn').style.display = 'none';
+    document.getElementById('stopSyncBtn').style.display = 'inline-block';
+    document.getElementById('progressCard').style.display = 'block';
+    document.getElementById('syncStatusText').textContent = 'Aktarım Durumu: Çalışıyor...';
+    
+    clearConsole();
+    addLog('Aktarım başlatılıyor...', 'info');
+    
+    try {
+        const response = await fetch('/api/sync/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            addLog('Aktarım başladı: ' + data.sync_id, 'success');
+            startPolling();
+        } else {
+            addLog('Hata: ' + data.message, 'error');
+            resetUI();
+        }
+    } catch (error) {
+        addLog('Bağlantı hatası: ' + error.message, 'error');
+        resetUI();
+    }
+}
+
+async function stopSync() {
+    try {
+        await fetch('/api/sync/stop', { method: 'POST' });
+        addLog('Aktarım durduruldu', 'warning');
+        resetUI();
+    } catch (error) {
+        addLog('Durdurma hatası: ' + error.message, 'error');
+    }
+}
+
+function startPolling() {
+    syncInterval = setInterval(checkSyncStatus, 2000);
+}
+
+async function checkSyncStatus() {
+    try {
+        const response = await fetch('/api/sync/status');
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            updateProgress(data);
+            
+            // Update logs
+            if (data.logs && data.logs.length > 0) {
+                const consoleOutput = document.getElementById('consoleOutput');
+                consoleOutput.innerHTML = '';
+                data.logs.forEach(log => addLog(log, 'info', false));
+            }
+            
+            if (!data.is_running && syncInterval) {
+                clearInterval(syncInterval);
+                syncInterval = null;
+                resetUI();
+                
+                if (data.last_sync) {
+                    addLog(`Aktarım tamamlandı: ${data.last_sync.created || 0} oluşturuldu, ${data.last_sync.errors || 0} hata`, 
+                           data.last_sync.errors > 0 ? 'warning' : 'success');
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Status check error:', error);
+    }
+}
+
+function updateProgress(data) {
+    const progress = data.progress || 0;
+    const current = data.current_index || 0;
+    const total = data.total || 0;
+    
+    document.getElementById('progressBar').style.width = progress + '%';
+    document.getElementById('progressPercent').textContent = progress + '%';
+    document.getElementById('progressText').textContent = `${current} / ${total}`;
+    document.getElementById('currentProduct').textContent = data.current_product || '-';
+}
+
+function addLog(message, type = 'info', prepend = true) {
+    const consoleOutput = document.getElementById('consoleOutput');
+    const timestamp = new Date().toLocaleTimeString();
+    
+    const logLine = document.createElement('div');
+    logLine.className = `console-line log-${type}`;
+    logLine.innerHTML = `
+        <span class="console-prompt">$</span>
+        <span class="console-text">[${timestamp}] ${message}</span>
+    `;
+    
+    if (prepend) {
+        consoleOutput.insertBefore(logLine, consoleOutput.firstChild);
+    } else {
+        consoleOutput.appendChild(logLine);
+    }
+}
+
+function clearConsole() {
+    document.getElementById('consoleOutput').innerHTML = '';
+}
+
+function resetUI() {
+    document.getElementById('startSyncBtn').style.display = 'inline-block';
+    document.getElementById('stopSyncBtn').style.display = 'none';
+    document.getElementById('syncStatusText').textContent = 'Aktarım Durumu: Bekliyor';
+}
+
+async function rollbackLastSync() {
+    if (!confirm('Son aktarımda oluşturulan ürünler silinecek. Devam etmek istiyor musunuz?')) return;
+    
+    try {
+        const response = await fetch('/api/sync/rollback-last', { method: 'POST' });
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            alert('Geri alma başarılı: ' + data.message);
+        } else {
+            alert('Hata: ' + data.message);
+        }
+    } catch (error) {
+        alert('Hata: ' + error.message);
+    }
+}
+
+async function deleteAllProducts() {
+    if (!confirm('TÜM Shopify ürünleri silinecek! Bu işlem geri alınamaz. Devam etmek istiyor musunuz?')) return;
+    if (!confirm('Emin misiniz? Bu işlem TÜM ürünleri silecek!')) return;
+    
+    try {
+        const response = await fetch('/api/shopify/delete-all', { method: 'POST' });
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            alert('Silme başarılı: ' + data.message);
+        } else {
+            alert('Hata: ' + data.message);
+        }
+    } catch (error) {
+        alert('Hata: ' + error.message);
+    }
+}
+</script>
+{% endblock %}
+
