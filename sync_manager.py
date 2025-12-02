@@ -222,6 +222,14 @@ class SyncManager:
                 access_token=self.shopify_client.access_token
             )
             
+            # CRITICAL: Delete ALL existing Shopify products ONCE at start
+            self._add_log('step', '🗑️ Deleting ALL existing Shopify products...')
+            try:
+                deleted_count = shopify_gateway.delete_all_products()
+                self._add_log('success', f'✅ Deleted {deleted_count} existing products')
+            except Exception as e:
+                self._add_log('warning', f'⚠️ Could not delete existing products: {e}')
+            
             # Create Sync Orchestrator
             orchestrator = SyncOrchestrator(
                 sync_id=self.sync_id,

@@ -14,6 +14,49 @@ from typing import List, Dict, Optional, Tuple
 from domain_models import StylePart
 
 
+def delete_all_products_helper(gateway) -> int:
+    """Delete all products - helper function"""
+    graphql_url = f"{gateway.shop_domain}/admin/api/{gateway.api_version}/graphql.json"
+    deleted_count = 0
+    
+    try:
+        query = """
+        query {
+            products(first: 250) {
+                edges {
+                    node {
+                        id
+                    }
+                }
+            }
+        }
+        """
+        
+        resp = requests.post(graphql_url, headers=gateway.headers, json={'query': query}, timeout=30)
+        
+        if resp.status_code == 200:
+            result = resp.json()
+            products_edges = result.get('data', {}).get('products', {}).get('edges', [])
+            
+            for edge in products_edges:
+                node = edge.get('node', {})
+                product_gid = node.get('id', '')
+                product_id = product_gid.replace('gid://shopify/Product/', '')
+                
+                if product_id:
+                    delete_url = f"{gateway.base_url}/products/{product_id}.json"
+                    del_resp = requests.delete(delete_url, headers=gateway.headers, timeout=30)
+                    
+                    if del_resp.status_code in [200, 204]:
+                        deleted_count += 1
+                    
+                    time.sleep(0.2)
+    except:
+        pass
+    
+    return deleted_count
+
+
 class ShopifyGateway:
     """
     Gateway to Shopify Admin API
@@ -46,49 +89,6 @@ class ShopifyGateway:
             raise ValueError(f"Cannot create product with {style_part.variant_count} variants. Max is 100. Use split_into_parts first.")
         
         print(f"   Creating product: {style_part.title} ({style_part.variant_count} variants)")
-        
-        # CRITICAL: Delete ALL existing products before creating
-        # This prevents "variant already exists" errors
-        print(f"   🗑️ Deleting ALL existing products (clean slate)...")
-        try:
-            graphql_url = f"{self.shop_domain}/admin/api/{self.api_version}/graphql.json"
-            
-            # Get all products using GraphQL
-            query = """
-            query {
-                products(first: 250) {
-                    edges {
-                        node {
-                            id
-                            title
-                        }
-                    }
-                }
-            }
-            """
-            
-            resp = requests.post(graphql_url, headers=self.headers, json={'query': query}, timeout=30)
-            
-            if resp.status_code == 200:
-                result = resp.json()
-                products_edges = result.get('data', {}).get('products', {}).get('edges', [])
-                
-                deleted_count = 0
-                for edge in products_edges:
-                    node = edge.get('node', {})
-                    product_gid = node.get('id', '')
-                    product_id = product_gid.replace('gid://shopify/Product/', '')
-                    
-                    if product_id:
-                        delete_url = f"{self.base_url}/products/{product_id}.json"
-                        requests.delete(delete_url, headers=self.headers, timeout=30)
-                        deleted_count += 1
-                        time.sleep(0.2)
-                
-                if deleted_count > 0:
-                    print(f"   🗑️ Deleted {deleted_count} existing products")
-        except Exception as e:
-            print(f"   ⚠️ Could not delete existing products: {e}")
         
         # Build REST API payload
         # Variants are now pre-merged by StyleBuilder (no duplicates)
@@ -314,4 +314,8 @@ class ShopifyGateway:
             return None
         except:
             return None
+    
+    def delete_all_products(self) -> int:
+        """Delete all products from Shopify"""
+        return delete_all_products_helper(self)
 
