@@ -86,8 +86,9 @@ class StyleBuilder:
         
         self._log(f"  📦 Building Style object...")
         
-        # Build variants
+        # Build variants FIRST (before creating Style object)
         seen_option_keys = set()
+        variants_list = []  # Initialize list
         
         self._log(f"  📊 Building variants from {len(products)} products...")
         
