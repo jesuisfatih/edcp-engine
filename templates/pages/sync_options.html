@@ -562,13 +562,22 @@ async function loadPreview() {
         
         const productCount = countData.count || 0;
         
+        // Check if no filters selected
+        if (selectedCategories.length === 0 && selectedStyles.length === 0 && selectedBrands.length === 0) {
+            container.innerHTML = `<div class="alert alert-warning">
+                <i class="fas fa-exclamation-triangle"></i> 
+                <strong>Filtre seçilmedi!</strong> Lütfen en az bir kategori, stil veya marka seçin.
+            </div>`;
+            return;
+        }
+        
         let html = `
-            <div class="alert alert-success mb-3">
+            <div class="alert alert-${productCount > 0 ? 'success' : 'warning'} mb-3">
                 <div class="d-flex justify-content-between align-items-center">
-                    <div><strong>✅ ${productCount.toLocaleString()} ürün bulundu</strong></div>
-                    <button type="button" class="btn btn-sm btn-outline-light" onclick="showAllProductsDetail()">
+                    <div><strong>${productCount > 0 ? '✅' : '⚠️'} ${productCount.toLocaleString()} ürün bulundu</strong></div>
+                    ${productCount > 0 ? `<button type="button" class="btn btn-sm btn-dark" onclick="showAllProductsDetail()">
                         <i class="fas fa-list"></i> Tüm Ürünleri Gör
-                    </button>
+                    </button>` : ''}
                 </div>
             </div>
         `;

@@ -12,6 +12,7 @@ from database import (init_database, save_config, get_config, get_all_config, sa
 import threading
 import json
 import requests
+from datetime import datetime
 
 load_dotenv()
 
@@ -266,15 +267,27 @@ def start_sync():
 
 @app.route('/api/sync/status', methods=['GET'])
 def sync_status():
-    """Get synchronization status"""
+    """Get synchronization status with all details for UI"""
     global sync_manager
     
     if sync_manager is None:
+        # Return last sync info from database if available
         return jsonify({
-            'status': 'idle',
+            'status': 'success',
+            'is_running': False,
             'progress': 0,
-            'message': 'No sync in progress'
+            'message': 'No sync in progress',
+            'stats': {'total': 0, 'created': 0, 'updated': 0, 'errors': 0},
+            'errors': [],
+            'logs': [],
+            'created_products': [],
+            'current_product': None,
+            'step': None,
+            'last_sync': None
         })
+    
+    # Determine if sync is actually running
+    is_running = sync_manager.status == 'running'
     
     # Get current product info
     current_product_info = None
@@ -282,21 +295,47 @@ def sync_status():
         current_product_info = {
             'sku': sync_manager.current_product.get('sku', 'N/A'),
             'title': f"{sync_manager.current_product.get('brandName', '')} {sync_manager.current_product.get('styleName', '')} {sync_manager.current_product.get('colorName', '')}".strip(),
+            'styleName': sync_manager.current_product.get('styleName', ''),
             'index': sync_manager.current_index,
             'total': sync_manager.stats.get('total', 0)
         }
     
+    # Format logs for frontend
+    formatted_logs = []
+    logs = getattr(sync_manager, 'logs', [])
+    for log in logs[-100:]:  # Last 100 logs
+        if isinstance(log, dict):
+            formatted_logs.append(f"[{log.get('timestamp', '')}] {log.get('message', '')}")
+        else:
+            formatted_logs.append(str(log))
+    
+    # Last sync stats for completed syncs
+    last_sync = None
+    if sync_manager.status in ('completed', 'error'):
+        last_sync = {
+            'total': sync_manager.stats.get('total', 0),
+            'created': sync_manager.stats.get('created', 0),
+            'updated': sync_manager.stats.get('updated', 0),
+            'errors': sync_manager.stats.get('errors', 0),
+            'timestamp': datetime.now().isoformat()
+        }
+    
     return jsonify({
-        'status': sync_manager.status,
+        'status': 'success',
+        'is_running': is_running,
+        'sync_status': sync_manager.status,
         'progress': sync_manager.progress,
         'message': sync_manager.message,
         'stats': sync_manager.stats,
         'errors': sync_manager.errors[-10:],  # Last 10 errors
         'current_product': current_product_info,
+        'current_index': sync_manager.current_index,
+        'total': sync_manager.stats.get('total', 0),
         'step': getattr(sync_manager, 'step', None),
         'step_progress': getattr(sync_manager, 'step_progress', None),
-        'logs': getattr(sync_manager, 'logs', [])[-100:],  # Last 100 logs
-        'created_products': getattr(sync_manager, 'created_products', [])  # All created products with links
+        'logs': formatted_logs,  # Formatted string logs
+        'created_products': getattr(sync_manager, 'created_products', []),
+        'last_sync': last_sync
     })
 
 @app.route('/api/sync/stop', methods=['POST'])
