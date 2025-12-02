@@ -447,6 +447,11 @@ class SyncManager:
             all_products = []
             
             # OPTIMIZATION: If styles are selected, use API-level filtering with styleid parameter (batched)
+            # Get warehouse filter
+            warehouse_codes = self.sync_options.get('filter_warehouses', [])
+            warehouse_param = ','.join(warehouse_codes) if warehouse_codes else None
+            print(f"Warehouse filter: {warehouse_param or 'ALL (no filter)'}")
+            
             if style_list:
                 print(f"Using API-level filtering for {len(style_list)} styles (batched)...")
                 def chunks(lst, n):
@@ -455,9 +460,10 @@ class SyncManager:
                 batched_products = []
                 for batch in chunks(style_list, 50):
                     styleid_param = ','.join([str(sid) for sid in batch])
-                    print(f"Fetching products with styleid batch size={len(batch)}")
+                    print(f"Fetching products with styleid batch size={len(batch)}, warehouses={warehouse_param}")
                     try:
-                        products = self.ss_client.get_products(styleid=styleid_param, limit=5000)
+                        # CRITICAL: Pass warehouse filter to API!
+                        products = self.ss_client.get_products(styleid=styleid_param, warehouses=warehouse_param, limit=5000)
                         print(f"API returned {len(products)} products for batch")
                         batched_products.extend(products)
                     except Exception as e:
@@ -466,8 +472,8 @@ class SyncManager:
                 all_products = batched_products
             else:
                 # No style filter, get all products
-                print("No style filter, fetching all products...")
-                all_products = self.ss_client.get_products(limit=5000)
+                print(f"No style filter, fetching all products with warehouses={warehouse_param}...")
+                all_products = self.ss_client.get_products(warehouses=warehouse_param, limit=5000)
                 print(f"Fetched {len(all_products)} products")
             
             # Filter by categories if selected (after style filter)
