@@ -2,6 +2,7 @@
 
 let selectedWarehouses = [];
 let warehousesData = [];
+let previewProducts = []; // Store preview products for stock detail modal
 
 // Immediately export to window
 if (typeof window !== 'undefined') {
@@ -187,7 +188,11 @@ async function loadPreviewWithLocations() {
         const productCount = previewData.count || 0;
         const warehouses = warehouseData.warehouses || [];
         
-        displayPreviewWithLocations(productCount, warehouses);
+        // Store products for stock detail modal
+        previewProducts = previewData.products || [];
+        console.log('Preview products stored:', previewProducts.length);
+        
+        displayPreviewWithLocations(productCount, warehouses, previewProducts);
         
     } catch (error) {
         alert('Hata: ' + error.message);
@@ -195,7 +200,7 @@ async function loadPreviewWithLocations() {
     }
 }
 
-function displayPreviewWithLocations(productCount, warehouses) {
+function displayPreviewWithLocations(productCount, warehouses, products = []) {
     const container = document.getElementById('previewWithLocations');
     
     if (productCount === 0) {
@@ -221,6 +226,9 @@ function displayPreviewWithLocations(productCount, warehouses) {
     let html = `
         <div class="alert alert-success mb-3">
             <strong>✅ ${productCount} ürün bulundu</strong>
+            <button type="button" class="btn btn-sm btn-outline-light float-end" onclick="window.showAllProductsDetail()">
+                <i class="fas fa-list"></i> Tüm Ürünleri Gör
+            </button>
         </div>
         <h6 class="mb-3">📍 Lokasyon Seçimi (Stok Durumuna Göre Sıralı):</h6>
         <div class="list-group mb-3">
@@ -235,24 +243,29 @@ function displayPreviewWithLocations(productCount, warehouses) {
         
         html += `
             <div class="list-group-item ${isHighest ? 'list-group-item-success' : ''}">
-                <div class="form-check">
-                    <input class="form-check-input" type="radio" 
-                           name="selectedLocation" 
-                           id="loc-${code}" 
-                           value="${code}"
-                           ${isHighest ? 'checked' : ''}
-                           onchange="window.selectLocation('${code}')">
-                    <label class="form-check-label d-flex justify-content-between w-100" for="loc-${code}">
-                        <span>
+                <div class="d-flex align-items-center">
+                    <div class="form-check flex-grow-1">
+                        <input class="form-check-input" type="radio" 
+                               name="selectedLocation" 
+                               id="loc-${code}" 
+                               value="${code}"
+                               ${isHighest ? 'checked' : ''}
+                               onchange="window.selectLocation('${code}')">
+                        <label class="form-check-label" for="loc-${code}">
                             <strong>${name}</strong>
                             <small class="text-muted">(${code})</small>
-                            ${isHighest ? '<span class="badge bg-success ms-2">EN YÜKSEK STOK</span>' : ''}
-                        </span>
-                        <span>
-                            <span class="badge bg-primary">${stock.toLocaleString()} adet</span>
-                            <span class="badge bg-secondary ms-1">${count.toLocaleString()} SKU</span>
-                        </span>
-                    </label>
+                        </label>
+                    </div>
+                    <div class="d-flex align-items-center gap-2">
+                        ${isHighest ? '<span class="badge bg-success">EN YÜKSEK STOK</span>' : ''}
+                        <span class="badge bg-primary">${stock.toLocaleString()} adet</span>
+                        <span class="badge bg-secondary">${count.toLocaleString()} SKU</span>
+                        <button type="button" class="btn btn-sm btn-outline-info" 
+                                onclick="window.showStockDetail('${code}', '${name}')"
+                                title="Stok Detayları">
+                            <i class="fas fa-info-circle"></i>
+                        </button>
+                    </div>
                 </div>
             </div>
         `;
@@ -267,6 +280,9 @@ function displayPreviewWithLocations(productCount, warehouses) {
         </div>
     `;
     
+    // Add modal HTML
+    html += createStockDetailModal();
+    
     container.innerHTML = html;
     
     // Attach event to start button
@@ -276,6 +292,240 @@ function displayPreviewWithLocations(productCount, warehouses) {
     if (locations.length > 0) {
         const highestCode = locations[0].code || locations[0].warehouseAbbr || 'ALL';
         selectLocation(highestCode);
+    }
+}
+
+// Create stock detail modal HTML
+function createStockDetailModal() {
+    return `
+        <div class="modal fade" id="stockDetailModal" tabindex="-1" aria-labelledby="stockDetailModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-xl modal-dialog-scrollable">
+                <div class="modal-content">
+                    <div class="modal-header bg-info text-white">
+                        <h5 class="modal-title" id="stockDetailModalLabel">
+                            <i class="fas fa-boxes"></i> Stok Detayları
+                        </h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body" id="stockDetailModalBody">
+                        <p class="text-center text-muted">Yükleniyor...</p>
+                    </div>
+                    <div class="modal-footer">
+                        <div class="me-auto" id="stockDetailSummary"></div>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Kapat</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+// Show stock detail for a specific location
+async function showStockDetail(locationCode, locationName) {
+    const modal = new bootstrap.Modal(document.getElementById('stockDetailModal'));
+    const modalBody = document.getElementById('stockDetailModalBody');
+    const modalTitle = document.getElementById('stockDetailModalLabel');
+    const modalSummary = document.getElementById('stockDetailSummary');
+    
+    modalTitle.innerHTML = `<i class="fas fa-boxes"></i> ${locationName} (${locationCode}) - Stok Detayları`;
+    modalBody.innerHTML = '<div class="text-center py-4"><i class="fas fa-spinner fa-spin fa-2x"></i><p class="mt-2">Stok bilgileri yükleniyor...</p></div>';
+    modalSummary.innerHTML = '';
+    
+    modal.show();
+    
+    try {
+        // Fetch products for this specific location
+        const ssAccountNumber = document.getElementById('ssAccountNumber').value;
+        const ssApiKey = document.getElementById('ssApiKey').value;
+        const syncOptions = window.getSyncOptions ? window.getSyncOptions() : {};
+        
+        // Add warehouse filter
+        syncOptions.filter_warehouses = [locationCode];
+        
+        const response = await fetch('/api/preview', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                ss_account_number: ssAccountNumber,
+                ss_api_key: ssApiKey,
+                sync_options: syncOptions
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.status === 'error') {
+            modalBody.innerHTML = `<div class="alert alert-danger">${data.message || 'Hata oluştu'}</div>`;
+            return;
+        }
+        
+        const products = data.products || [];
+        renderStockDetailTable(products, modalBody, modalSummary, locationCode);
+        
+    } catch (error) {
+        modalBody.innerHTML = `<div class="alert alert-danger">Hata: ${error.message}</div>`;
+    }
+}
+
+// Show all products detail
+function showAllProductsDetail() {
+    const modal = new bootstrap.Modal(document.getElementById('stockDetailModal'));
+    const modalBody = document.getElementById('stockDetailModalBody');
+    const modalTitle = document.getElementById('stockDetailModalLabel');
+    const modalSummary = document.getElementById('stockDetailSummary');
+    
+    modalTitle.innerHTML = `<i class="fas fa-boxes"></i> Tüm Filtrelenmiş Ürünler`;
+    
+    if (!previewProducts || previewProducts.length === 0) {
+        modalBody.innerHTML = '<div class="alert alert-warning">Ürün bulunamadı. Önce önizleme yapın.</div>';
+        modal.show();
+        return;
+    }
+    
+    renderStockDetailTable(previewProducts, modalBody, modalSummary, 'ALL');
+    modal.show();
+}
+
+// Render stock detail table
+function renderStockDetailTable(products, container, summaryContainer, locationCode) {
+    if (!products || products.length === 0) {
+        container.innerHTML = '<div class="alert alert-warning">Bu lokasyonda filtrelere uygun ürün bulunamadı.</div>';
+        summaryContainer.innerHTML = '';
+        return;
+    }
+    
+    // Group by style
+    const styleGroups = {};
+    let totalStock = 0;
+    let totalSKUs = 0;
+    
+    products.forEach(p => {
+        const styleId = p.styleID || 'unknown';
+        const styleName = `${p.brandName || ''} ${p.styleName || ''}`.trim() || 'Bilinmeyen Stil';
+        
+        if (!styleGroups[styleId]) {
+            styleGroups[styleId] = {
+                styleId,
+                styleName,
+                brandName: p.brandName || '',
+                products: []
+            };
+        }
+        
+        styleGroups[styleId].products.push(p);
+        totalStock += (p.qty || 0);
+        totalSKUs++;
+    });
+    
+    // Build table
+    let html = `
+        <div class="mb-3">
+            <input type="text" class="form-control" id="stockSearchInput" 
+                   placeholder="🔍 SKU, Renk veya Beden ara..." 
+                   onkeyup="window.filterStockTable()">
+        </div>
+        <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+            <table class="table table-sm table-hover table-striped" id="stockDetailTable">
+                <thead class="table-dark sticky-top">
+                    <tr>
+                        <th style="width: 15%">SKU</th>
+                        <th style="width: 25%">Ürün</th>
+                        <th style="width: 15%">Renk</th>
+                        <th style="width: 10%">Beden</th>
+                        <th style="width: 10%" class="text-end">Stok</th>
+                        <th style="width: 10%" class="text-end">Fiyat</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+    
+    // Sort styles by name
+    const sortedStyles = Object.values(styleGroups).sort((a, b) => a.styleName.localeCompare(b.styleName));
+    
+    sortedStyles.forEach(style => {
+        // Style header row
+        const styleStock = style.products.reduce((sum, p) => sum + (p.qty || 0), 0);
+        html += `
+            <tr class="table-info">
+                <td colspan="4">
+                    <strong>${style.styleName}</strong>
+                    <small class="text-muted">(Style ID: ${style.styleId})</small>
+                </td>
+                <td class="text-end"><strong>${styleStock.toLocaleString()}</strong></td>
+                <td></td>
+            </tr>
+        `;
+        
+        // Sort products by color then size
+        const sortedProducts = style.products.sort((a, b) => {
+            const colorCmp = (a.colorName || '').localeCompare(b.colorName || '');
+            if (colorCmp !== 0) return colorCmp;
+            return (a.sizeOrder || a.sizeName || '').localeCompare(b.sizeOrder || b.sizeName || '');
+        });
+        
+        sortedProducts.forEach(p => {
+            const qty = p.qty || 0;
+            const price = p.customerPrice || p.piecePrice || 0;
+            const stockClass = qty > 100 ? 'text-success' : qty > 0 ? 'text-warning' : 'text-danger';
+            
+            html += `
+                <tr data-sku="${p.sku || ''}" data-color="${(p.colorName || '').toLowerCase()}" data-size="${(p.sizeName || '').toLowerCase()}">
+                    <td><code>${p.sku || '-'}</code></td>
+                    <td class="text-truncate" style="max-width: 200px;" title="${style.styleName}">${style.styleName}</td>
+                    <td>${p.colorName || '-'}</td>
+                    <td>${p.sizeName || '-'}</td>
+                    <td class="text-end ${stockClass}"><strong>${qty.toLocaleString()}</strong></td>
+                    <td class="text-end">$${price.toFixed(2)}</td>
+                </tr>
+            `;
+        });
+    });
+    
+    html += `
+                </tbody>
+            </table>
+        </div>
+    `;
+    
+    container.innerHTML = html;
+    
+    // Summary
+    summaryContainer.innerHTML = `
+        <span class="badge bg-primary me-2">${totalSKUs.toLocaleString()} SKU</span>
+        <span class="badge bg-success me-2">${totalStock.toLocaleString()} Toplam Stok</span>
+        <span class="badge bg-info">${Object.keys(styleGroups).length} Stil</span>
+    `;
+}
+
+// Filter stock table
+function filterStockTable() {
+    const searchInput = document.getElementById('stockSearchInput');
+    const filter = searchInput ? searchInput.value.toLowerCase() : '';
+    const table = document.getElementById('stockDetailTable');
+    
+    if (!table) return;
+    
+    const rows = table.getElementsByTagName('tr');
+    
+    for (let i = 1; i < rows.length; i++) { // Skip header
+        const row = rows[i];
+        
+        // Skip style header rows
+        if (row.classList.contains('table-info')) {
+            row.style.display = '';
+            continue;
+        }
+        
+        const sku = row.getAttribute('data-sku') || '';
+        const color = row.getAttribute('data-color') || '';
+        const size = row.getAttribute('data-size') || '';
+        const text = row.textContent.toLowerCase();
+        
+        if (filter === '' || sku.includes(filter) || color.includes(filter) || size.includes(filter) || text.includes(filter)) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
     }
 }
 
@@ -312,6 +562,9 @@ window.saveFiltersAndStart = saveFiltersAndStart;
 window.toggleWarehouse = toggleWarehouse;
 window.displayWarehouses = displayWarehouses;
 window.displayPreviewWithLocations = displayPreviewWithLocations;
+window.showStockDetail = showStockDetail;
+window.showAllProductsDetail = showAllProductsDetail;
+window.filterStockTable = filterStockTable;
 
 console.log('✅ Warehouse UI functions exported to window');
 
