@@ -13,17 +13,22 @@ import json
 
 @dataclass
 class StyleVariant:
-    """Represents a single SKU/variant of a style"""
-    sku: str
-    color_name: str
-    color_code: str
-    size_name: str
-    size_code: str
-    price: float
+    """Represents a single SKU/variant of a style - may aggregate multiple warehouse SKUs"""
+    sku: str  # Primary SKU (first or highest stock)
+    skus: List[str] = field(default_factory=list)  # All SKUs for this variant (if merged)
+    color_name: str = ""
+    color_code: str = ""
+    size_name: str = ""
+    size_code: str = ""
+    price: float = 0.0
     barcode: Optional[str] = None
     weight: float = 0.0
     weight_unit: str = 'lb'
-    inventory_quantity: Optional[int] = None
+    
+    # Multi-location inventory support
+    inventory_quantity: Optional[int] = None  # Total inventory (sum of all locations)
+    location_inventory: Dict[str, int] = field(default_factory=dict)  # {warehouse_code: qty}
+    
     image_url: Optional[str] = None
     
     # Raw metafields
