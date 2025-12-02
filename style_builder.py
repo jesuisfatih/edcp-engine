@@ -110,7 +110,7 @@ class StyleBuilder:
                 self._log(f"  ❌ Failed to build variant {idx}: {e}")
                 continue
         
-        self._log(f"  📊 Total variants built: {len(style.variants)}")
+        self._log(f"  ✅ Total variants built: {len(variants_list)}")
         
         # Build product images (unique URLs)
         image_urls = set()
@@ -118,8 +118,15 @@ class StyleBuilder:
             urls = self._extract_image_urls(product)
             image_urls.update(urls)
         
+        images_list = []
         for idx, url in enumerate(sorted(image_urls)):
-            style.images.append(StyleImage(url=url, position=idx))
+            images_list.append(StyleImage(url=url, position=idx))
+        
+        # Add images to style_data
+        style_data['images'] = images_list
+        
+        # Now create Style object with all data
+        style = Style(**style_data)
         
         return style
     
