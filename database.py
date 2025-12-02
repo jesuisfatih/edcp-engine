@@ -108,6 +108,52 @@ def init_database():
             )
         ''')
         
+        # ===== NEW ARCHITECTURE: Persistent Mapping Tables =====
+        
+        # Style to Shopify Product mapping (CRITICAL for idempotent sync)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS style_shopify_products (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                style_id TEXT NOT NULL,
+                part_index INTEGER DEFAULT 0,
+                shopify_product_id INTEGER NOT NULL,
+                shopify_handle TEXT,
+                shopify_gid TEXT,
+                variant_count INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_synced_at TIMESTAMP,
+                snapshot_hash TEXT,
+                UNIQUE(style_id, part_index)
+            )
+        ''')
+        
+        # SKU to Shopify Variant mapping
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS sku_shopify_variants (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sku TEXT UNIQUE NOT NULL,
+                style_id TEXT NOT NULL,
+                shopify_variant_id INTEGER NOT NULL,
+                shopify_product_id INTEGER NOT NULL,
+                shopify_gid TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Style snapshots for change detection
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS style_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                style_id TEXT NOT NULL,
+                snapshot_hash TEXT NOT NULL,
+                variant_count INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                snapshot_data TEXT
+            )
+        ''')
+        
         # Variants table - grouped variants for Shopify products
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS product_variants (
