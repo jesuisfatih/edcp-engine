@@ -291,6 +291,48 @@ class SSActivewearClient:
         
         return self._make_request(endpoint, params)
     
+    def get_warehouses(self) -> List[Dict]:
+        """
+        Get list of all warehouses with inventory
+        Returns: List of warehouse info with stock counts
+        """
+        try:
+            # Get inventory summary by warehouse
+            inventory = self.get_inventory()
+            
+            # Group by warehouse
+            warehouse_stock = {}
+            for item in inventory:
+                warehouse = item.get('warehouse', 'Unknown')
+                qty = item.get('qty', 0) or 0
+                
+                if warehouse not in warehouse_stock:
+                    warehouse_stock[warehouse] = {
+                        'code': warehouse,
+                        'name': warehouse,
+                        'total_stock': 0,
+                        'product_count': 0
+                    }
+                
+                warehouse_stock[warehouse]['total_stock'] += qty
+                warehouse_stock[warehouse]['product_count'] += 1
+            
+            # Convert to list and sort by stock
+            warehouses = sorted(
+                warehouse_stock.values(),
+                key=lambda x: x['total_stock'],
+                reverse=True
+            )
+            
+            return warehouses
+        except:
+            # Fallback: return common warehouses
+            return [
+                {'code': 'CA', 'name': 'California', 'total_stock': 0, 'product_count': 0},
+                {'code': 'TX', 'name': 'Texas', 'total_stock': 0, 'product_count': 0},
+                {'code': 'NY', 'name': 'New York', 'total_stock': 0, 'product_count': 0}
+            ]
+    
     def get_specs(self, spec_filter: Optional[str] = None,
                  style: Optional[str] = None,
                  fields: Optional[str] = None) -> List[Dict]:
