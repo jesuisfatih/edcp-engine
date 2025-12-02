@@ -32,7 +32,7 @@ class SyncOrchestrator:
         self.sync_id = sync_id
         self.gateway = shopify_gateway
         self.reconciler = Reconciler(shopify_gateway)
-        self.style_builder = StyleBuilder(sync_id)
+        self.style_builder = StyleBuilder(sync_id, log_callback=self._log)
         self.log_callback = log_callback
         
         self.stats = {

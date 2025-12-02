@@ -13,15 +13,22 @@ import json
 class StyleBuilder:
     """Builds Style domain objects from cached S&S products"""
     
-    def __init__(self, sync_id: str):
+    def __init__(self, sync_id: str, log_callback=None):
         self.sync_id = sync_id
+        self.log_callback = log_callback
+    
+    def _log(self, message: str):
+        """Log to callback (for UI) and console"""
+        print(message)
+        if self.log_callback:
+            self.log_callback('info', message)
     
     def build_style_from_group(self, style_id: str) -> Optional[Style]:
         """
         Build a Style object from all cached products with given style_id
         Returns None if no products found
         """
-        print(f"  DEBUG: Building style {style_id} from cache...")
+        self._log(f"  🔍 Building style {style_id} from cache...")
         
         # Fetch all products for this style
         with get_db() as conn:
@@ -34,10 +41,10 @@ class StyleBuilder:
             
             rows = cursor.fetchall()
         
-        print(f"  DEBUG: Found {len(rows)} rows in cache for style {style_id}")
+        self._log(f"  📊 Found {len(rows)} rows in cache for style {style_id}")
         
         if not rows:
-            print(f"  ERROR: No rows found in cache for style {style_id}")
+            self._log(f"  ❌ No rows found in cache for style {style_id}")
             return None
         
         # Parse product data
@@ -47,13 +54,13 @@ class StyleBuilder:
                 product = json.loads(row['product_data'])
                 products.append(product)
             except Exception as e:
-                print(f"  ERROR: Failed to parse row {idx}: {e}")
+                self._log(f"  ❌ Failed to parse row {idx}: {e}")
                 continue
         
-        print(f"  DEBUG: Parsed {len(products)} products from {len(rows)} rows")
+        self._log(f"  📊 Parsed {len(products)} products from {len(rows)} rows")
         
         if not products:
-            print(f"  ERROR: No products after parsing for style {style_id}")
+            self._log(f"  ❌ No products after parsing for style {style_id}")
             return None
         
         # Use first product as base for style-level attributes
@@ -76,7 +83,7 @@ class StyleBuilder:
         # Build variants
         seen_option_keys = set()
         
-        print(f"  DEBUG: Building variants from {len(products)} products...")
+        self._log(f"  📊 Building variants from {len(products)} products...")
         
         for idx, product in enumerate(products):
             try:
@@ -91,12 +98,12 @@ class StyleBuilder:
                 style.variants.append(variant)
                 
                 if idx < 3:  # Log first 3 variants
-                    print(f"  DEBUG: Variant {idx+1}: {variant.sku} - {variant.color_name} / {variant.size_name}")
+                    self._log(f"  📊 Variant {idx+1}: {variant.sku} - {variant.color_name} / {variant.size_name}")
             except Exception as e:
-                print(f"  ERROR: Failed to build variant {idx}: {e}")
+                self._log(f"  ❌ Failed to build variant {idx}: {e}")
                 continue
         
-        print(f"  DEBUG: Total variants built: {len(style.variants)}")
+        self._log(f"  📊 Total variants built: {len(style.variants)}")
         
         # Build product images (unique URLs)
         image_urls = set()
@@ -263,7 +270,7 @@ class StyleBuilder:
             style = self.build_style_from_group(str(style_id))
             if style:
                 styles.append(style)
-                print(f"  Built Style {style_id}: {style.variant_count} variants, {len(style.images)} images")
+                self._log(f"  ✅ Built Style {style_id}: {style.variant_count} variants, {len(style.images)} images")
         
         return styles
 
