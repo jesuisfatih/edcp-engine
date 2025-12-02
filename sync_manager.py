@@ -2,6 +2,12 @@ from ss_api_client import SSActivewearClient
 from shopify_client import ShopifyClient
 from data_fetcher import DataFetcher
 from variant_grouper import VariantGrouper
+
+# NEW ARCHITECTURE imports
+from shopify_gateway import ShopifyGateway
+from sync_orchestrator import SyncOrchestrator
+from database import init_database
+
 from typing import Dict, List, Optional
 import time
 import uuid
@@ -205,7 +211,36 @@ class SyncManager:
             self.progress = 35
             self.step = 'sync'
             self.step_progress = 35
-            self._add_log('step', '🔄 Shopify\'a aktarım başlatılıyor...', {'step': 'sync'})
+            self._add_log('step', '🔄 NEW ARCHITECTURE: Style-based sync başlatılıyor...', {'step': 'sync'})
+            
+            # Initialize database (create new architecture tables)
+            init_database()
+            
+            # Create Shopify Gateway
+            shopify_gateway = ShopifyGateway(
+                shop_domain=self.shopify_client.shop_domain,
+                access_token=self.shopify_client.access_token
+            )
+            
+            # Create Sync Orchestrator
+            orchestrator = SyncOrchestrator(
+                sync_id=self.sync_id,
+                shopify_gateway=shopify_gateway,
+                log_callback=self._add_log
+            )
+            
+            # Execute sync with new architecture
+            sync_stats = orchestrator.sync_all_styles()
+            
+            # Update our stats
+            self.stats['created'] = sync_stats.get('products_created', 0)
+            self.stats['updated'] = sync_stats.get('products_updated', 0)
+            self.stats['errors'] = sync_stats.get('errors', 0)
+            
+            self._add_log('step', '✅ NEW ARCHITECTURE sync complete', {'stats': sync_stats})
+            
+            # OLD ARCHITECTURE FALLBACK (keep for safety)
+            self._add_log('step', '⚠️ If new architecture failed, using old sync as fallback...', {'step': 'sync'})
             
             product_groups = grouper.get_product_groups(status='pending')
             total_groups = len(product_groups)
