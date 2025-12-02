@@ -66,19 +66,25 @@ class StyleBuilder:
         # Use first product as base for style-level attributes
         base = products[0]
         
-        # Build Style object
-        style = Style(
-            style_id=str(style_id),
-            brand=base.get('brandName', ''),
-            name=base.get('styleName', f"Style {style_id}"),
-            description=base.get('description', '') or base.get('styleDescription', '') or '',
-            product_type=base.get('baseCategory', '') or base.get('category', ''),
-            tags=self._extract_tags(base),
-            metafields=self._extract_product_metafields(base),
-            collections=[],  # Will be populated separately
-            variants=[],
-            images=[]
-        )
+        self._log(f"  📋 Base product: brand={base.get('brandName')}, style={base.get('styleName')}")
+        
+        # Build Style object (will add variants later to avoid validation error)
+        # NOTE: Style.__post_init__ checks for at least 1 variant
+        # So we build it WITHOUT validation first
+        style_data = {
+            'style_id': str(style_id),
+            'brand': base.get('brandName', ''),
+            'name': base.get('styleName', f"Style {style_id}"),
+            'description': base.get('description', '') or base.get('styleDescription', '') or '',
+            'product_type': base.get('baseCategory', '') or base.get('category', ''),
+            'tags': self._extract_tags(base),
+            'metafields': self._extract_product_metafields(base),
+            'collections': [],
+            'variants': [],  # Will be populated below
+            'images': []
+        }
+        
+        self._log(f"  📦 Building Style object...")
         
         # Build variants
         seen_option_keys = set()
