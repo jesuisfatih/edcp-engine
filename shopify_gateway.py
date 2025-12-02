@@ -47,24 +47,48 @@ class ShopifyGateway:
         
         print(f"   Creating product: {style_part.title} ({style_part.variant_count} variants)")
         
-        # CRITICAL: Delete any existing product with same title
+        # CRITICAL: Delete ALL existing products before creating
         # This prevents "variant already exists" errors
+        print(f"   🗑️ Deleting ALL existing products (clean slate)...")
         try:
-            search_url = f"{self.base_url}/products.json?title={urllib.parse.quote(style_part.title)}&limit=10"
-            search_resp = requests.get(search_url, headers=self.headers, timeout=30)
+            graphql_url = f"https://{self.shop_domain}/admin/api/{self.api_version}/graphql.json"
             
-            if search_resp.status_code == 200:
-                existing = search_resp.json().get('products', [])
-                for product in existing:
-                    if product.get('title', '').strip().lower() == style_part.title.strip().lower():
-                        product_id = product.get('id')
-                        print(f"   🗑️ Deleting existing product {product_id}: {product.get('title')}")
+            # Get all products using GraphQL
+            query = """
+            query {
+                products(first: 250) {
+                    edges {
+                        node {
+                            id
+                            title
+                        }
+                    }
+                }
+            }
+            """
+            
+            resp = requests.post(graphql_url, headers=self.headers, json={'query': query}, timeout=30)
+            
+            if resp.status_code == 200:
+                result = resp.json()
+                products_edges = result.get('data', {}).get('products', {}).get('edges', [])
+                
+                deleted_count = 0
+                for edge in products_edges:
+                    node = edge.get('node', {})
+                    product_gid = node.get('id', '')
+                    product_id = product_gid.replace('gid://shopify/Product/', '')
+                    
+                    if product_id:
                         delete_url = f"{self.base_url}/products/{product_id}.json"
                         requests.delete(delete_url, headers=self.headers, timeout=30)
-                        time.sleep(0.3)
+                        deleted_count += 1
+                        time.sleep(0.2)
+                
+                if deleted_count > 0:
+                    print(f"   🗑️ Deleted {deleted_count} existing products")
         except Exception as e:
-            print(f"   ⚠️ Could not check/delete existing products: {e}")
-            # Continue anyway
+            print(f"   ⚠️ Could not delete existing products: {e}")
         
         # Build REST API payload
         # Variants are now pre-merged by StyleBuilder (no duplicates)
