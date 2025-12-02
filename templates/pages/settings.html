@@ -104,20 +104,20 @@ async function testSSConnection() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                type: 'ss',
-                account_number: document.getElementById('ss_account_number').value,
-                api_key: document.getElementById('ss_api_key').value
+                ss_account_number: document.getElementById('ss_account_number').value,
+                ss_api_key: document.getElementById('ss_api_key').value
             })
         });
         const data = await response.json();
         
-        if (data.status === 'success') {
-            resultDiv.innerHTML = '<div class="alert alert-success"><i class="fas fa-check"></i> Bağlantı başarılı!</div>';
+        if (data.ss) {
+            resultDiv.innerHTML = '<div class="alert alert-success"><i class="fas fa-check"></i> S&S Bağlantı başarılı!</div>';
         } else {
-            resultDiv.innerHTML = `<div class="alert alert-danger"><i class="fas fa-times"></i> ${data.message}</div>`;
+            const msg = data.messages ? data.messages.find(m => m.includes('S&S')) || 'Bağlantı hatası' : 'Bağlantı hatası';
+            resultDiv.innerHTML = `<div class="alert alert-danger"><i class="fas fa-times"></i> ${msg}</div>`;
         }
     } catch (error) {
-        resultDiv.innerHTML = `<div class="alert alert-danger"><i class="fas fa-times"></i> Bağlantı hatası</div>`;
+        resultDiv.innerHTML = `<div class="alert alert-danger"><i class="fas fa-times"></i> Bağlantı hatası: ${error.message}</div>`;
     }
 }
 
@@ -130,20 +130,20 @@ async function testShopifyConnection() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                type: 'shopify',
-                shop_domain: document.getElementById('shopify_domain').value,
-                access_token: document.getElementById('shopify_token').value
+                shopify_domain: document.getElementById('shopify_domain').value,
+                shopify_token: document.getElementById('shopify_token').value
             })
         });
         const data = await response.json();
         
-        if (data.status === 'success') {
-            resultDiv.innerHTML = '<div class="alert alert-success"><i class="fas fa-check"></i> Bağlantı başarılı!</div>';
+        if (data.shopify) {
+            resultDiv.innerHTML = '<div class="alert alert-success"><i class="fas fa-check"></i> Shopify Bağlantı başarılı!</div>';
         } else {
-            resultDiv.innerHTML = `<div class="alert alert-danger"><i class="fas fa-times"></i> ${data.message}</div>`;
+            const msg = data.messages ? data.messages.find(m => m.includes('Shopify')) || 'Bağlantı hatası' : 'Bağlantı hatası';
+            resultDiv.innerHTML = `<div class="alert alert-danger"><i class="fas fa-times"></i> ${msg}</div>`;
         }
     } catch (error) {
-        resultDiv.innerHTML = `<div class="alert alert-danger"><i class="fas fa-times"></i> Bağlantı hatası</div>`;
+        resultDiv.innerHTML = `<div class="alert alert-danger"><i class="fas fa-times"></i> Bağlantı hatası: ${error.message}</div>`;
     }
 }
 

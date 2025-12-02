@@ -297,11 +297,20 @@ def stop_sync():
 def products_count():
     """Get count of products based on filters - NO Shopify needed"""
     try:
-        data = request.json
-        ss_client = SSActivewearClient(
-            data.get('ss_account_number'),
-            data.get('ss_api_key')
-        )
+        data = request.json or {}
+        
+        # Get credentials from database
+        ss_config = get_config('ss_config') or session.get('ss_config', {})
+        account_number = ss_config.get('account_number', '')
+        api_key = ss_config.get('api_key', '')
+        
+        if not account_number or not api_key:
+            return jsonify({
+                'status': 'error',
+                'message': 'S&S API credentials not configured'
+            }), 400
+        
+        ss_client = SSActivewearClient(account_number, api_key)
         
         sync_options = data.get('sync_options', {})
         
@@ -523,11 +532,18 @@ def test_endpoints():
 def get_categories():
     """Get all categories from S&S Activewear"""
     try:
-        ss_client = SSActivewearClient(
-            request.json.get('ss_account_number'),
-            request.json.get('ss_api_key')
-        )
+        # Get credentials from database or session
+        ss_config = get_config('ss_config') or session.get('ss_config', {})
+        account_number = ss_config.get('account_number', '')
+        api_key = ss_config.get('api_key', '')
         
+        if not account_number or not api_key:
+            return jsonify({
+                'status': 'error',
+                'message': 'S&S API credentials not configured'
+            }), 400
+        
+        ss_client = SSActivewearClient(account_number, api_key)
         categories = ss_client.get_categories()
         
         return jsonify({
@@ -544,17 +560,20 @@ def get_categories():
 def get_styles():
     """Get styles filtered by categories"""
     try:
-        data = request.json
-        if not data:
+        data = request.json or {}
+        
+        # Get credentials from database
+        ss_config = get_config('ss_config') or session.get('ss_config', {})
+        account_number = ss_config.get('account_number', '')
+        api_key = ss_config.get('api_key', '')
+        
+        if not account_number or not api_key:
             return jsonify({
                 'status': 'error',
-                'message': 'No data provided'
+                'message': 'S&S API credentials not configured'
             }), 400
         
-        ss_client = SSActivewearClient(
-            data.get('ss_account_number'),
-            data.get('ss_api_key')
-        )
+        ss_client = SSActivewearClient(account_number, api_key)
         
         category_ids = data.get('category_ids', [])
         if isinstance(category_ids, str):
@@ -625,12 +644,18 @@ def get_styles():
 def get_warehouses():
     """Get list of warehouses with stock info"""
     try:
-        data = request.json
-        ss_client = SSActivewearClient(
-            data.get('ss_account_number'),
-            data.get('ss_api_key')
-        )
+        # Get credentials from database
+        ss_config = get_config('ss_config') or session.get('ss_config', {})
+        account_number = ss_config.get('account_number', '')
+        api_key = ss_config.get('api_key', '')
         
+        if not account_number or not api_key:
+            return jsonify({
+                'status': 'error',
+                'message': 'S&S API credentials not configured'
+            }), 400
+        
+        ss_client = SSActivewearClient(account_number, api_key)
         warehouses = ss_client.get_warehouses()
         
         return jsonify({
@@ -647,17 +672,20 @@ def get_warehouses():
 def get_brands():
     """Get brands filtered by styles - organized by style"""
     try:
-        data = request.json
-        if not data:
+        data = request.json or {}
+        
+        # Get credentials from database
+        ss_config = get_config('ss_config') or session.get('ss_config', {})
+        account_number = ss_config.get('account_number', '')
+        api_key = ss_config.get('api_key', '')
+        
+        if not account_number or not api_key:
             return jsonify({
                 'status': 'error',
-                'message': 'No data provided'
+                'message': 'S&S API credentials not configured'
             }), 400
         
-        ss_client = SSActivewearClient(
-            data.get('ss_account_number'),
-            data.get('ss_api_key')
-        )
+        ss_client = SSActivewearClient(account_number, api_key)
         
         style_ids = data.get('style_ids', [])
         if isinstance(style_ids, str):
