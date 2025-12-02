@@ -230,7 +230,12 @@ class StyleBuilder:
         images_list = []
         for idx, (url, color_name) in enumerate(sorted(image_color_map.items())):
             # Format alt text as #Color_ColorName for Shopify variant image linking
-            alt_text = f"#Color_{color_name}" if color_name else None
+            # IMPORTANT: Replace hyphens with spaces (Tri-Rust -> Tri Rust)
+            if color_name:
+                clean_color = color_name.replace('-', ' ')
+                alt_text = f"#Color_{clean_color}"
+            else:
+                alt_text = None
             images_list.append(StyleImage(url=url, alt_text=alt_text, position=idx))
         
         self._log(f"  📸 Built {len(images_list)} images with color alt tags")
