@@ -244,14 +244,19 @@ class DataFetcher:
         else:
             brand_names = [str(brand_filters).strip()] if brand_filters and not str(brand_filters).isdigit() else []
 
+        # CRITICAL: Get warehouse filter!
+        warehouse_codes = filter_options.get("filter_warehouses", [])
+        warehouse_param = ",".join(warehouse_codes) if warehouse_codes else None
+        
         print(f"=== DATA FETCHER FILTERING DEBUG ===")
         print(f"Categories: {category_list}")
         print(f"Styles: {style_list}")
         print(f"Brands: {brand_names}")
+        print(f"Warehouses: {warehouse_param or 'ALL (no filter)'}")
 
         all_products = []
 
-        # CRITICAL: Use API-level filtering for styles (much more efficient) with batching
+        # CRITICAL: Use API-level filtering for styles AND warehouses
         if style_list:
             print(f"Using API-level filtering for {len(style_list)} styles (batched)...")
 
@@ -262,9 +267,10 @@ class DataFetcher:
             batched_products = []
             for batch in chunks(style_list, 50):  # batch styleid list to avoid oversized queries
                 styleid_param = ",".join([str(sid) for sid in batch])
-                print(f"Fetching products with styleid batch size={len(batch)}")
+                print(f"Fetching products with styleid batch size={len(batch)}, warehouses={warehouse_param}")
                 try:
-                    products = self.ss_client.get_products(styleid=styleid_param, limit=5000)
+                    # CRITICAL: Pass warehouse filter to API!
+                    products = self.ss_client.get_products(styleid=styleid_param, warehouses=warehouse_param, limit=5000)
                     print(f"API returned {len(products)} products for batch")
                     batched_products.extend(products)
                 except Exception as e:
@@ -273,9 +279,9 @@ class DataFetcher:
                     continue
             all_products = batched_products
         else:
-            # No style filter, get all products
-            print("No style filter, fetching all products...")
-            all_products = self.ss_client.get_products(limit=5000)
+            # No style filter, get all products with warehouse filter
+            print(f"No style filter, fetching all products with warehouses={warehouse_param}...")
+            all_products = self.ss_client.get_products(warehouses=warehouse_param, limit=5000)
             print(f"Fetched {len(all_products)} products")
 
         # CRITICAL FIX: If styles were selected, SKIP category filter
