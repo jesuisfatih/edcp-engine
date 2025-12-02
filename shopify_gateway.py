@@ -2,7 +2,7 @@
 Shopify Gateway - Clean API layer (no business logic)
 
 Responsibility: Execute Shopify API commands with proper error handling
-Knows about: 100-variant limit, rate limiting, retries
+Knows about: 2048-variant limit (GraphQL API), rate limiting, retries
 Knows nothing about: Style domain, reconciliation, business rules
 """
 
@@ -78,15 +78,17 @@ class ShopifyGateway:
     
     def create_product_with_variants(self, style_part: StylePart) -> Tuple[int, str, List[Dict]]:
         """
-        Create product with up to 100 variants using REST API
+        Create product with up to 2048 variants using REST API
         
         CRITICAL: Deletes any existing product with same title first
+        
+        Note: Shopify GraphQL API supports 2048 variants as of 2024-04
         
         Returns: (product_id, product_gid, created_variants)
         Raises: Exception on failure
         """
-        if style_part.variant_count > 100:
-            raise ValueError(f"Cannot create product with {style_part.variant_count} variants. Max is 100. Use split_into_parts first.")
+        if style_part.variant_count > 2048:
+            raise ValueError(f"Cannot create product with {style_part.variant_count} variants. Max is 2048.")
         
         print(f"   Creating product: {style_part.title} ({style_part.variant_count} variants)")
         

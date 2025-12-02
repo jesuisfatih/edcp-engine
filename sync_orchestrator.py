@@ -157,7 +157,7 @@ class SyncOrchestrator:
         style_part = parts[part_index]
         
         self._log('info', f'   🆕 Creating Shopify product (Part {part_index + 1}/{len(parts)}): {style_part.title}')
-        self._log('info', f'   📦 Part has {style_part.variant_count} variants (max 100 allowed)')
+        self._log('info', f'   📦 Part has {style_part.variant_count} variants (max 2048 allowed)')
         
         try:
             # Create product with variants

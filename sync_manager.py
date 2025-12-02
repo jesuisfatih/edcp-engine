@@ -1030,7 +1030,7 @@ class SyncManager:
         else:
             # Create new product with all variants
             if self.sync_options.get('create_new', True):
-                # Note: Products with >100 variants will automatically use GraphQL API
+                # Note: Shopify now supports up to 2048 variants per product (GraphQL API)
                 try:
                     result = self.shopify_client.create_product(product_data)
                     

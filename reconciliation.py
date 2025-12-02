@@ -144,9 +144,9 @@ class Reconciler:
     def build_desired_state(self, style: Style) -> DesiredShopifyState:
         """
         Convert Style domain object into desired Shopify state
-        Handles 100-variant split if needed
+        Handles 2048-variant split if needed (rarely necessary now)
         """
-        parts = style.split_into_parts(max_variants_per_part=100)
+        parts = style.split_into_parts(max_variants_per_part=2048)
         
         return DesiredShopifyState(
             style_id=style.style_id,

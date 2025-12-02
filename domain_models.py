@@ -119,18 +119,22 @@ class Style:
         """Total number of variants"""
         return len(self.variants)
     
+    # Shopify GraphQL API supports up to 2048 variants per product (as of 2024-04)
+    # Previously was 100 with REST API
+    MAX_VARIANTS_PER_PRODUCT = 2048
+    
     @property
     def requires_split(self) -> bool:
-        """Does this style exceed Shopify's 100-variant limit?"""
-        return self.variant_count > 100
+        """Does this style exceed Shopify's 2048-variant limit?"""
+        return self.variant_count > self.MAX_VARIANTS_PER_PRODUCT
     
     @property
     def split_count(self) -> int:
         """How many Shopify products needed for this style?"""
         if not self.requires_split:
             return 1
-        # Calculate number of products needed (100 variants each)
-        return (self.variant_count + 99) // 100
+        # Calculate number of products needed (2048 variants each)
+        return (self.variant_count + self.MAX_VARIANTS_PER_PRODUCT - 1) // self.MAX_VARIANTS_PER_PRODUCT
     
     def compute_snapshot_hash(self) -> str:
         """
@@ -157,7 +161,7 @@ class Style:
         snapshot_json = json.dumps(snapshot, sort_keys=True)
         return hashlib.sha256(snapshot_json.encode()).hexdigest()
     
-    def split_into_parts(self, max_variants_per_part: int = 100) -> List['StylePart']:
+    def split_into_parts(self, max_variants_per_part: int = 2048) -> List['StylePart']:
         """
         Split this style into multiple parts if variant count > max
         Returns list of StylePart objects
