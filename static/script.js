@@ -1440,8 +1440,9 @@ function updateConsoleLogs(logs) {
     if (logs.length > lastLogCount) {
         const newLogs = logs.slice(lastLogCount);
         
-        // Reverse new logs so newest appears first (at top)
-        newLogs.reverse().forEach(log => {
+        // Add each new log at the TOP (newest first)
+        // No reverse needed - just insert each at top, last one ends up on top
+        newLogs.forEach(log => {
             const logLine = document.createElement('div');
             logLine.className = `console-line log-${log.level || 'info'}`;
             
@@ -1456,7 +1457,7 @@ function updateConsoleLogs(logs) {
             logLine.appendChild(prompt);
             logLine.appendChild(text);
             
-            // Insert at TOP (newest first)
+            // Insert at TOP - each new log goes to the very top
             consoleOutput.insertBefore(logLine, consoleOutput.firstChild);
         });
         

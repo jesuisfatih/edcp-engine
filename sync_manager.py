@@ -144,9 +144,13 @@ class SyncManager:
                     if self.sync_options.get('filter_brands'):
                         brands = self.sync_options.get('filter_brands')
                         filter_info.append(f"Markalar: {brands if isinstance(brands, list) else str(brands)}")
+                    if self.sync_options.get('filter_warehouses'):
+                        warehouses = self.sync_options.get('filter_warehouses')
+                        filter_info.append(f"Depolar: {warehouses if isinstance(warehouses, list) else str(warehouses)}")
                     
                     filter_msg = '. '.join(filter_info) if filter_info else 'Filtre yok'
                     self.message = f'Ürün bulunamadı. Seçilen filtreler: {filter_msg}. Lütfen filtreleri kontrol edin veya farklı filtreler deneyin.'
+                    self._add_log('warning', f'⚠️ {self.message}')
                     self.progress = 100
                     self.step_progress = 100
                     return
@@ -154,6 +158,7 @@ class SyncManager:
                 self.progress = 20
                 self.step_progress = 20
                 self.message = f'Cached {cached_count} products to local database'
+                self._add_log('success', f'✅ {cached_count} ürün veritabanına kaydedildi')
                 
             except Exception as e:
                 error_msg = str(e)
@@ -164,6 +169,7 @@ class SyncManager:
                         f'Please verify your API credentials are correct and active. '
                         f'Error: {error_msg}'
                     )
+                    self._add_log('error', f'❌ Kimlik doğrulama hatası: {error_msg}')
                     self.errors.append({
                         'error': f'Authentication failed: {error_msg}',
                         'timestamp': datetime.now().isoformat()
@@ -172,6 +178,7 @@ class SyncManager:
                 else:
                     self.status = 'error'
                     self.message = f'Error fetching products: {str(e)}'
+                    self._add_log('error', f'❌ Ürün çekme hatası: {error_msg}')
                     self.errors.append({
                         'error': str(e),
                         'timestamp': datetime.now().isoformat()
@@ -192,14 +199,17 @@ class SyncManager:
                 if groups_count == 0:
                     self.status = 'error'
                     self.message = 'No product groups created'
+                    self._add_log('error', '❌ Ürün grubu oluşturulamadı')
                     return
                 
                 self.progress = 30
                 self.message = f'Created {groups_count} product groups'
+                self._add_log('success', f'✅ {groups_count} ürün grubu oluşturuldu')
                 
             except Exception as e:
                 self.status = 'error'
                 self.message = f'Error grouping products: {str(e)}'
+                self._add_log('error', f'❌ Gruplama hatası: {str(e)}')
                 self.errors.append({
                     'error': str(e),
                     'timestamp': datetime.now().isoformat()

@@ -90,6 +90,37 @@
             font-size: 16px;
             font-weight: 600;
         }
+        /* Console output styles */
+        .console-output {
+            background: #1e1e1e;
+            color: #00ff00;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 13px;
+            padding: 15px;
+            max-height: 400px;
+            overflow-y: auto;
+            border-radius: 0 0 5px 5px;
+        }
+        .console-line {
+            padding: 3px 0;
+            border-bottom: 1px solid #333;
+            display: flex;
+            align-items: flex-start;
+        }
+        .console-prompt {
+            color: #00ff00;
+            margin-right: 10px;
+            font-weight: bold;
+        }
+        .console-text {
+            color: #e0e0e0;
+            word-break: break-word;
+        }
+        .log-error .console-text { color: #ff6b6b; }
+        .log-warning .console-text { color: #ffd93d; }
+        .log-success .console-text { color: #6bcf7f; }
+        .log-info .console-text { color: #69b4ff; }
+        .log-step .console-text { color: #c792ea; font-weight: bold; }
     </style>
 </head>
 <body>
