@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, session, redirect, url_for
+from flask import Flask, render_template, request, jsonify, session
 import os
 from dotenv import load_dotenv
 from ss_api_client import SSActivewearClient
@@ -31,44 +31,7 @@ sync_manager = None
 
 @app.route('/')
 def index():
-    return redirect(url_for('page_dashboard'))
-
-
-# ==================== PAGE ROUTES ====================
-
-@app.route('/dashboard')
-def page_dashboard():
-    return render_template('pages/dashboard.html', active_page='dashboard')
-
-
-@app.route('/settings')
-def page_settings():
-    return render_template('pages/settings.html', active_page='settings')
-
-
-@app.route('/sync-options')
-def page_sync_options():
-    return render_template('pages/sync_options.html', active_page='sync-options')
-
-
-@app.route('/sync-settings')
-def page_sync_settings():
-    return render_template('pages/sync_settings.html', active_page='sync-settings')
-
-
-@app.route('/sync')
-def page_sync():
-    return render_template('pages/sync.html', active_page='sync')
-
-
-@app.route('/auto-sync')
-def page_auto_sync():
-    return render_template('pages/auto_sync.html', active_page='auto-sync')
-
-
-@app.route('/product-search')
-def page_product_search():
-    return render_template('pages/product_search.html', active_page='product-search')
+    return render_template('index.html')
 
 @app.route('/api/config', methods=['GET', 'POST'])
 def config():
