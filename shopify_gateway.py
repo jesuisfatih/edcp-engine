@@ -199,12 +199,88 @@ class ShopifyGateway:
                 'id': variant.get('id'),
                 'gid': f"gid://shopify/ProductVariant/{variant['id']}",
                 'sku': variant.get('sku', ''),
+                'option1': variant.get('option1', ''),  # Color
                 'price': variant.get('price', '0')
             })
         
         print(f"   ✅ Product created: ID={product_id}, Variants={len(created_variants)}")
         
+        # CRITICAL: Assign images to variants based on color matching
+        self._assign_images_to_variants(product_id, product)
+        
         return product_id, product_gid, created_variants
+    
+    def _assign_images_to_variants(self, product_id: int, product_data: Dict):
+        """
+        Assign images to variants based on color matching.
+        
+        This ensures that when a customer selects a color variant,
+        the correct product image is displayed.
+        
+        Matching logic:
+        - Image alt text: "#Color_Faded Mustard" → color: "Faded Mustard"
+        - Variant option1: "Faded Mustard"
+        - All variants with matching color get the same image_id
+        """
+        images = product_data.get('images', [])
+        variants = product_data.get('variants', [])
+        
+        if not images or not variants:
+            print(f"   ⚠️ No images or variants to link")
+            return
+        
+        # Build color → image_id mapping from alt tags
+        # Alt format: "#Color_Faded Mustard" or "#Color_Tri Athletic Grey"
+        color_to_image = {}
+        for img in images:
+            alt = img.get('alt', '') or ''
+            image_id = img.get('id')
+            
+            if alt.startswith('#Color_') and image_id:
+                # Extract color name: "#Color_Faded Mustard" → "Faded Mustard"
+                color_name = alt.replace('#Color_', '').strip()
+                if color_name:
+                    # Normalize: lowercase for matching
+                    color_key = color_name.lower()
+                    if color_key not in color_to_image:
+                        color_to_image[color_key] = image_id
+                        print(f"   🖼️ Image {image_id} mapped to color: {color_name}")
+        
+        if not color_to_image:
+            print(f"   ⚠️ No color mappings found in image alt tags")
+            return
+        
+        # Assign images to variants
+        assigned_count = 0
+        for variant in variants:
+            variant_id = variant.get('id')
+            variant_color = variant.get('option1', '')  # Color is option1
+            
+            if not variant_id or not variant_color:
+                continue
+            
+            # Normalize color for matching
+            color_key = variant_color.lower()
+            
+            if color_key in color_to_image:
+                image_id = color_to_image[color_key]
+                
+                # Update variant with image_id
+                try:
+                    url = f"{self.base_url}/variants/{variant_id}.json"
+                    payload = {'variant': {'image_id': image_id}}
+                    resp = requests.put(url, headers=self.headers, json=payload, timeout=15)
+                    
+                    if resp.status_code == 200:
+                        assigned_count += 1
+                    else:
+                        print(f"   ⚠️ Failed to assign image to variant {variant_id}: {resp.status_code}")
+                    
+                    time.sleep(0.1)  # Small delay for rate limiting
+                except Exception as e:
+                    print(f"   ⚠️ Error assigning image to variant {variant_id}: {e}")
+        
+        print(f"   ✅ Assigned images to {assigned_count}/{len(variants)} variants")
     
     def add_product_images(self, product_id: int, image_urls: List[str]) -> int:
         """
