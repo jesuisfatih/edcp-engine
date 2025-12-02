@@ -214,20 +214,23 @@ class StyleBuilder:
         size_name = product.get('sizeName', '') or product.get('size', '')
         size_code = product.get('sizeCode', '')
         
-        # Price
-        price_obj = product.get('pricing', {})
+        # Price - S&S API returns price fields directly in product (not nested in 'pricing')
         price = 0.0
-        if isinstance(price_obj, dict):
-            # Try different price fields
-            price = price_obj.get('customerPrice', 0) or price_obj.get('price', 0) or 0
-        elif isinstance(price_obj, (int, float)):
-            price = price_obj
         
-        # Ensure price is float
-        try:
-            price = float(price)
-        except:
-            price = 0.0
+        # Try customerPrice first (user's negotiated price), then others
+        price_fields = ['customerPrice', 'piecePrice', 'casePrice', 'dozenPrice', 'salePrice', 'price']
+        for field in price_fields:
+            val = product.get(field)
+            if val is not None and val != '' and val != 0:
+                try:
+                    price = float(val)
+                    if price > 0:
+                        break
+                except (ValueError, TypeError):
+                    continue
+        
+        if price == 0:
+            print(f"   ⚠️ No price found for SKU {sku}, checked fields: {price_fields}")
         
         # Inventory
         inventory_qty = product.get('qty') or product.get('inventory', {}).get('qty')

@@ -121,6 +121,14 @@ class ShopifyGateway:
             for idx, v in enumerate(variants_payload):
                 print(f"     {idx+1}. {v['sku']}: {v['option1']} / {v['option2']}")
         
+        # Build images payload
+        images_payload = []
+        if style_part.style.images:
+            for img in style_part.style.images:
+                if img.url:
+                    images_payload.append({'src': img.url})
+            print(f"   📸 Adding {len(images_payload)} product images")
+        
         # Product payload - CRITICAL: Must define options for Color and Size!
         payload = {
             'product': {
@@ -134,7 +142,8 @@ class ShopifyGateway:
                     {'name': 'Color'},
                     {'name': 'Size'}
                 ],
-                'variants': variants_payload
+                'variants': variants_payload,
+                'images': images_payload
             }
         }
         
