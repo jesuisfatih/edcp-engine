@@ -914,5 +914,264 @@ def delete_all_shopify_data():
             'message': str(e)
         }), 400
 
+
+@app.route('/api/search-products', methods=['POST'])
+def search_products():
+    """Search products by name, SKU, or style number"""
+    try:
+        data = request.json or {}
+        query = data.get('query', '').strip()
+        limit = data.get('limit', 50)
+        offset = data.get('offset', 0)
+        
+        if not query or len(query) < 2:
+            return jsonify({
+                'status': 'error',
+                'message': 'Search query must be at least 2 characters'
+            }), 400
+        
+        # Get S&S API config
+        ss_config = get_config('ss_config') or session.get('ss_config', {})
+        if not ss_config.get('account_number') or not ss_config.get('api_key'):
+            return jsonify({
+                'status': 'error',
+                'message': 'S&S API credentials not configured'
+            }), 400
+        
+        ss_client = SSActivewearClient(
+            account_number=ss_config['account_number'],
+            api_key=ss_config['api_key']
+        )
+        
+        # Search products
+        all_products = ss_client.get_products(limit=5000)
+        
+        # Filter by search query (case insensitive)
+        query_lower = query.lower()
+        matching_products = []
+        
+        for product in all_products:
+            # Search in multiple fields
+            searchable_fields = [
+                str(product.get('sku', '')),
+                str(product.get('styleName', '')),
+                str(product.get('brandName', '')),
+                str(product.get('styleID', '')),
+                str(product.get('title', '')),
+                str(product.get('colorName', '')),
+                str(product.get('style', ''))
+            ]
+            
+            if any(query_lower in field.lower() for field in searchable_fields):
+                matching_products.append(product)
+        
+        # Group by style for cleaner results
+        styles_dict = {}
+        for product in matching_products:
+            style_id = product.get('styleID') or product.get('style', 'unknown')
+            if style_id not in styles_dict:
+                styles_dict[style_id] = {
+                    'styleID': style_id,
+                    'styleName': product.get('styleName', ''),
+                    'brandName': product.get('brandName', ''),
+                    'title': product.get('title', product.get('styleName', '')),
+                    'basePrice': product.get('piecePrice') or product.get('customerPrice') or product.get('casePrice', 0),
+                    'image': None,
+                    'variants': [],
+                    'colors': set(),
+                    'sizes': set()
+                }
+                
+                # Get primary image
+                for img_field in ['colorFrontImage', 'colorSideImage', 'colorBackImage', 
+                                  'styleImage', 'brandImage']:
+                    img_url = product.get(img_field)
+                    if img_url:
+                        if not img_url.startswith('http'):
+                            img_url = f"https://www.ssactivewear.com/{img_url.lstrip('/')}"
+                        styles_dict[style_id]['image'] = img_url
+                        break
+            
+            # Add variant info
+            styles_dict[style_id]['variants'].append(product)
+            if product.get('colorName'):
+                styles_dict[style_id]['colors'].add(product['colorName'])
+            if product.get('sizeName'):
+                styles_dict[style_id]['sizes'].add(product['sizeName'])
+        
+        # Convert to list and sort
+        results = []
+        for style_id, style_data in styles_dict.items():
+            results.append({
+                'styleID': style_data['styleID'],
+                'styleName': style_data['styleName'],
+                'brandName': style_data['brandName'],
+                'title': style_data['title'],
+                'basePrice': style_data['basePrice'],
+                'image': style_data['image'],
+                'variantCount': len(style_data['variants']),
+                'colorCount': len(style_data['colors']),
+                'sizeCount': len(style_data['sizes'])
+            })
+        
+        # Sort by relevance (exact matches first)
+        def relevance_score(item):
+            score = 0
+            title = (item.get('title') or '').lower()
+            style_name = (item.get('styleName') or '').lower()
+            if query_lower == title or query_lower == style_name:
+                score += 100
+            elif title.startswith(query_lower) or style_name.startswith(query_lower):
+                score += 50
+            return -score
+        
+        results.sort(key=relevance_score)
+        
+        # Apply pagination
+        total = len(results)
+        paginated = results[offset:offset + limit]
+        
+        return jsonify({
+            'status': 'success',
+            'total': total,
+            'results': paginated,
+            'hasMore': offset + limit < total
+        })
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+
+@app.route('/api/product-detail/<style_id>', methods=['GET'])
+def get_product_detail(style_id):
+    """Get detailed product information including all variants and metafields"""
+    try:
+        # Get S&S API config
+        ss_config = get_config('ss_config') or session.get('ss_config', {})
+        if not ss_config.get('account_number') or not ss_config.get('api_key'):
+            return jsonify({
+                'status': 'error',
+                'message': 'S&S API credentials not configured'
+            }), 400
+        
+        ss_client = SSActivewearClient(
+            account_number=ss_config['account_number'],
+            api_key=ss_config['api_key']
+        )
+        
+        # Fetch products for this style
+        products = ss_client.get_products(styleid=style_id, limit=2000)
+        
+        if not products:
+            return jsonify({
+                'status': 'error',
+                'message': f'No products found for style {style_id}'
+            }), 404
+        
+        # Build comprehensive product data
+        base_product = products[0]
+        
+        # Collect all images
+        all_images = {}
+        for product in products:
+            color = product.get('colorName', 'Default')
+            if color not in all_images:
+                all_images[color] = []
+            
+            for img_field in ['colorFrontImage', 'colorSideImage', 'colorBackImage', 
+                              'colorDirectSideImage', 'colorOnModelFrontImage', 'colorOnModelBackImage']:
+                img_url = product.get(img_field)
+                if img_url:
+                    if not img_url.startswith('http'):
+                        img_url = f"https://www.ssactivewear.com/{img_url.lstrip('/')}"
+                    if img_url not in all_images[color]:
+                        all_images[color].append(img_url)
+        
+        # Build variants list
+        variants = []
+        for product in products:
+            # Get inventory from warehouses
+            total_inventory = 0
+            warehouse_inventory = {}
+            warehouses = product.get('warehouses', [])
+            if isinstance(warehouses, list):
+                for wh in warehouses:
+                    wh_name = wh.get('warehouseAbbr', 'Unknown')
+                    qty = wh.get('qty', 0)
+                    warehouse_inventory[wh_name] = qty
+                    total_inventory += qty
+            
+            variants.append({
+                'sku': product.get('sku', ''),
+                'gtin': product.get('gtin', ''),
+                'colorName': product.get('colorName', ''),
+                'sizeName': product.get('sizeName', ''),
+                'colorCode': product.get('colorCode', ''),
+                'sizeCode': product.get('sizeCode', ''),
+                'piecePrice': product.get('piecePrice', 0),
+                'casePrice': product.get('casePrice', 0),
+                'dozenPrice': product.get('dozenPrice', 0),
+                'salePrice': product.get('salePrice'),
+                'customerPrice': product.get('customerPrice'),
+                'caseQty': product.get('caseQty', 0),
+                'weight': product.get('pieceWeight', 0),
+                'inventory': total_inventory,
+                'warehouseInventory': warehouse_inventory
+            })
+        
+        # Extract all metafields from base product
+        metafields = {}
+        skip_fields = ['sku', 'gtin', 'colorName', 'sizeName', 'piecePrice', 'warehouses', 
+                       'colorFrontImage', 'colorSideImage', 'colorBackImage', 'styleImage']
+        
+        for key, value in base_product.items():
+            if key not in skip_fields and value is not None and value != '':
+                if not isinstance(value, (list, dict)):
+                    metafields[key] = value
+        
+        # Calculate price range
+        prices = [v['piecePrice'] for v in variants if v['piecePrice'] > 0]
+        min_price = min(prices) if prices else 0
+        max_price = max(prices) if prices else 0
+        
+        # Get unique colors and sizes
+        colors = sorted(list(set(v['colorName'] for v in variants if v['colorName'])))
+        sizes = sorted(list(set(v['sizeName'] for v in variants if v['sizeName'])))
+        
+        result = {
+            'styleID': style_id,
+            'styleName': base_product.get('styleName', ''),
+            'brandName': base_product.get('brandName', ''),
+            'title': base_product.get('title', base_product.get('styleName', '')),
+            'description': base_product.get('description', ''),
+            'minPrice': min_price,
+            'maxPrice': max_price,
+            'images': all_images,
+            'colors': colors,
+            'sizes': sizes,
+            'variants': variants,
+            'metafields': metafields,
+            'totalVariants': len(variants)
+        }
+        
+        return jsonify({
+            'status': 'success',
+            'product': result
+        })
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
