@@ -4,49 +4,38 @@
 
 {% block extra_css %}
 <style>
-    .step-card {
-        border-left: 4px solid #dee2e6;
-        transition: border-color 0.3s;
-    }
-    .step-card.active {
-        border-left-color: var(--accent-color);
-    }
-    .step-card .card-header {
-        cursor: pointer;
-    }
-    .step-number {
-        display: inline-flex;
-        width: 28px;
-        height: 28px;
-        align-items: center;
-        justify-content: center;
-        background: #dee2e6;
-        color: #6c757d;
-        border-radius: 50%;
-        font-weight: bold;
+    .nav-pills .nav-link {
+        border-radius: 25px;
+        padding: 10px 20px;
         margin-right: 10px;
+        background: #e9ecef;
+        color: #495057;
     }
-    .step-card.active .step-number {
+    .nav-pills .nav-link.active {
         background: var(--accent-color);
         color: white;
     }
-    .filter-item {
-        padding: 10px 15px;
+    .nav-pills .nav-link:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+    .filter-checkbox {
+        padding: 8px 12px;
         border: 1px solid #dee2e6;
         border-radius: 8px;
         margin-bottom: 8px;
         cursor: pointer;
         transition: all 0.2s;
     }
-    .filter-item:hover {
+    .filter-checkbox:hover {
         background: #f8f9fa;
     }
-    .filter-item.selected {
+    .filter-checkbox.selected {
         background: #e3f2fd;
         border-color: #2196f3;
     }
     .location-item {
-        padding: 12px 15px;
+        padding: 15px;
         border: 2px solid #dee2e6;
         border-radius: 10px;
         margin-bottom: 10px;
@@ -58,155 +47,158 @@
     }
     .location-item.selected {
         border-color: var(--accent-color);
-        background: linear-gradient(135deg, #fff5f5 0%, #ffe0e6 100%);
-    }
-    .stock-badge {
-        font-size: 0.85rem;
-        padding: 4px 12px;
-        border-radius: 20px;
+        background: #fff5f5;
     }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="page-header">
+<div class="page-header d-flex justify-content-between align-items-center">
     <h2><i class="fas fa-sliders-h"></i> Aktarım Seçenekleri</h2>
+    <button type="button" class="btn btn-warning btn-sm" onclick="resetAllFilters()">
+        <i class="fas fa-redo"></i> Filtreleri Sıfırla
+    </button>
 </div>
 
-<!-- Step 1: Categories -->
-<div class="card step-card mb-3" id="step1">
-    <div class="card-header" onclick="toggleStep(1)">
-        <span class="step-number">1</span>
-        <strong>Kategori Seçimi</strong>
-        <span class="float-end text-muted" id="step1-summary">Seçilmedi</span>
-    </div>
-    <div class="card-body collapse show" id="step1-content">
-        <div class="mb-3">
-            <button class="btn btn-sm btn-outline-primary me-2" onclick="loadCategories()">
-                <i class="fas fa-sync"></i> Kategorileri Yükle
-            </button>
-            <button class="btn btn-sm btn-outline-secondary" onclick="selectAllCategories()">Tümünü Seç</button>
-            <button class="btn btn-sm btn-outline-secondary" onclick="clearAllCategories()">Temizle</button>
-        </div>
-        <div id="categoriesContainer" class="row">
-            <p class="text-muted">Kategorileri yüklemek için butona tıklayın</p>
-        </div>
-    </div>
-</div>
-
-<!-- Step 2: Brands -->
-<div class="card step-card mb-3" id="step2">
-    <div class="card-header" onclick="toggleStep(2)">
-        <span class="step-number">2</span>
-        <strong>Marka Seçimi</strong>
-        <span class="float-end text-muted" id="step2-summary">Seçilmedi</span>
-    </div>
-    <div class="card-body collapse" id="step2-content">
-        <div class="mb-3">
-            <button class="btn btn-sm btn-outline-primary me-2" onclick="loadBrands()">
-                <i class="fas fa-sync"></i> Markaları Yükle
-            </button>
-            <button class="btn btn-sm btn-outline-secondary" onclick="selectAllBrands()">Tümünü Seç</button>
-            <button class="btn btn-sm btn-outline-secondary" onclick="clearAllBrands()">Temizle</button>
-        </div>
-        <div id="brandsContainer" class="row">
-            <p class="text-muted">Markaları yüklemek için butona tıklayın</p>
-        </div>
-    </div>
-</div>
-
-<!-- Step 3: Styles -->
-<div class="card step-card mb-3" id="step3">
-    <div class="card-header" onclick="toggleStep(3)">
-        <span class="step-number">3</span>
-        <strong>Stil Seçimi</strong>
-        <span class="float-end text-muted" id="step3-summary">Seçilmedi</span>
-    </div>
-    <div class="card-body collapse" id="step3-content">
-        <div class="mb-3">
-            <input type="text" class="form-control" id="styleSearch" placeholder="Stil adı veya ID ile ara...">
-        </div>
-        <div class="mb-3">
-            <button class="btn btn-sm btn-outline-primary me-2" onclick="loadStyles()">
-                <i class="fas fa-sync"></i> Stilleri Yükle
-            </button>
-        </div>
-        <div id="stylesContainer" style="max-height: 400px; overflow-y: auto;">
-            <p class="text-muted">Stilleri yüklemek için butona tıklayın</p>
-        </div>
-    </div>
-</div>
-
-<!-- Step 4: Location & Preview -->
-<div class="card step-card mb-3" id="step4">
-    <div class="card-header" onclick="toggleStep(4)">
-        <span class="step-number">4</span>
-        <strong>Lokasyon Seçimi & Önizleme</strong>
-        <span class="float-end text-muted" id="step4-summary">Seçilmedi</span>
-    </div>
-    <div class="card-body collapse" id="step4-content">
-        <div class="text-center mb-4">
-            <button class="btn btn-primary btn-lg" onclick="loadPreview()">
-                <i class="fas fa-eye"></i> Önizleme Yükle
-            </button>
-        </div>
-        
-        <div id="previewContainer" style="display: none;">
-            <div class="alert alert-info">
-                <strong id="previewProductCount">0</strong> ürün bulundu
-            </div>
-            
-            <h6 class="mb-3">Lokasyon Seçin (Zorunlu)</h6>
-            <div id="locationsContainer">
-                <!-- Locations will be loaded here -->
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Action Buttons -->
 <div class="card">
+    <div class="card-body">
+        <!-- Step Indicator -->
+        <ul class="nav nav-pills mb-4" id="filterSteps" role="tablist">
+            <li class="nav-item">
+                <button class="nav-link active" id="step1-tab" data-bs-toggle="pill" data-bs-target="#step1" type="button">
+                    <i class="fas fa-list"></i> 1. Kategoriler
+                </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link" id="step2-tab" data-bs-toggle="pill" data-bs-target="#step2" type="button" disabled>
+                    <i class="fas fa-tshirt"></i> 2. Stiller
+                </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link" id="step3-tab" data-bs-toggle="pill" data-bs-target="#step3" type="button" disabled>
+                    <i class="fas fa-tag"></i> 3. Markalar
+                </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link" id="step4-tab" data-bs-toggle="pill" data-bs-target="#step4" type="button" disabled>
+                    <i class="fas fa-eye"></i> 4. Önizleme + Lokasyon
+                </button>
+            </li>
+        </ul>
+
+        <!-- Step Content -->
+        <div class="tab-content">
+            <!-- Step 1: Categories -->
+            <div class="tab-pane fade show active" id="step1" role="tabpanel">
+                <button type="button" class="btn btn-primary mb-3" onclick="loadCategories()">
+                    <i class="fas fa-sync"></i> Kategorileri Yükle
+                </button>
+                <input type="text" id="categorySearch" class="form-control mb-3" placeholder="🔍 Kategori ara..." oninput="filterList('categoriesList', this.value)">
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="selectAllCategories" onchange="toggleAll('categories')">
+                    <label class="form-check-label fw-bold">Tümünü Seç</label>
+                </div>
+                <div id="categoriesList" class="border rounded p-3" style="max-height: 400px; overflow-y: auto;">
+                    <p class="text-muted text-center">Kategorileri yüklemek için butona tıklayın</p>
+                </div>
+                <div class="mt-3">
+                    <button type="button" class="btn btn-success" onclick="goToStep(2)" id="step1NextBtn" disabled>
+                        İleri: Stilleri Seç <i class="fas fa-arrow-right"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Step 2: Styles -->
+            <div class="tab-pane fade" id="step2" role="tabpanel">
+                <p class="text-muted mb-3"><i class="fas fa-info-circle"></i> Stiller seçilen kategorilere göre yükleniyor...</p>
+                <input type="text" id="styleSearch" class="form-control mb-3" placeholder="🔍 Stil ara..." oninput="filterList('stylesList', this.value)">
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="selectAllStyles" onchange="toggleAll('styles')">
+                    <label class="form-check-label fw-bold">Tümünü Seç</label>
+                </div>
+                <div id="stylesList" class="border rounded p-3" style="max-height: 400px; overflow-y: auto;">
+                    <p class="text-muted text-center">Önce kategorileri seçin</p>
+                </div>
+                <div class="mt-3">
+                    <button type="button" class="btn btn-secondary" onclick="goToStep(1)">
+                        <i class="fas fa-arrow-left"></i> Geri
+                    </button>
+                    <button type="button" class="btn btn-success" onclick="goToStep(3)" id="step2NextBtn" disabled>
+                        İleri: Markaları Seç <i class="fas fa-arrow-right"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Step 3: Brands -->
+            <div class="tab-pane fade" id="step3" role="tabpanel">
+                <button type="button" class="btn btn-primary mb-3" onclick="loadBrands()">
+                    <i class="fas fa-sync"></i> Markaları Yükle
+                </button>
+                <input type="text" id="brandSearch" class="form-control mb-3" placeholder="🔍 Marka ara..." oninput="filterList('brandsList', this.value)">
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="selectAllBrands" onchange="toggleAll('brands')">
+                    <label class="form-check-label fw-bold">Tümünü Seç</label>
+                </div>
+                <div id="brandsList" class="border rounded p-3" style="max-height: 400px; overflow-y: auto;">
+                    <p class="text-muted text-center">Önce stilleri seçin</p>
+                </div>
+                <div class="mt-3">
+                    <button type="button" class="btn btn-secondary" onclick="goToStep(2)">
+                        <i class="fas fa-arrow-left"></i> Geri
+                    </button>
+                    <button type="button" class="btn btn-success" onclick="goToStep(4)" id="step3NextBtn" disabled>
+                        İleri: Önizleme <i class="fas fa-arrow-right"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Step 4: Preview + Location -->
+            <div class="tab-pane fade" id="step4" role="tabpanel">
+                <h5 class="mb-3">📋 Önizleme ve Lokasyon Seçimi</h5>
+                <button type="button" class="btn btn-primary mb-3" onclick="loadPreview()">
+                    <i class="fas fa-sync"></i> Önizleme Yükle
+                </button>
+                
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle"></i>
+                    <strong>ÖNEMLİ:</strong> Lokasyon seçimi zorunludur. En yüksek stoğu olan lokasyon otomatik seçilecek.
+                </div>
+                
+                <div id="previewContainer" class="border rounded p-3" style="max-height: 500px; overflow-y: auto;">
+                    <p class="text-muted text-center">Önizleme yüklemek için butona tıklayın</p>
+                </div>
+                
+                <div class="mt-3">
+                    <button type="button" class="btn btn-secondary" onclick="goToStep(3)">
+                        <i class="fas fa-arrow-left"></i> Geri
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Save and Start Button -->
+<div class="card mt-4">
     <div class="card-body text-center">
-        <button class="btn btn-accent btn-lg" onclick="saveAndStartSync()" id="startSyncBtn" disabled>
+        <button type="button" class="btn btn-accent btn-lg" onclick="saveAndStartSync()" id="saveStartBtn" disabled>
             <i class="fas fa-rocket"></i> Kaydet ve Aktarımı Başlat
         </button>
+        <p class="text-muted mt-2 mb-0">Seçilen filtreleri kaydet ve aktarım sayfasına git</p>
     </div>
 </div>
 
-<!-- Arbitrage Modal -->
-<div class="modal fade" id="arbitrageModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header bg-warning">
-                <h5 class="modal-title"><i class="fas fa-dollar-sign"></i> Fiyat Ayarları (Arbitraj)</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <div class="mb-3">
-                    <label class="form-label">Kar Oranı (%)</label>
-                    <input type="number" class="form-control" id="markupPercent" value="50" min="0" max="500">
-                    <small class="text-muted">Örn: 50 = %50 kar</small>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Yuvarlama</label>
-                    <select class="form-select" id="roundingType">
-                        <option value="none">Yuvarlama Yapma</option>
-                        <option value="99">.99'a Yuvarla</option>
-                        <option value="90">.90'a Yuvarla</option>
-                        <option value="00">.00'a Yuvarla</option>
-                    </select>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Minimum Fiyat ($)</label>
-                    <input type="number" class="form-control" id="minPrice" value="0" min="0" step="0.01">
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
-                <button type="button" class="btn btn-warning" onclick="saveArbitrage()">
-                    <i class="fas fa-save"></i> Kaydet
-                </button>
-            </div>
+<!-- Selected Summary -->
+<div class="card mt-4" id="filtersSummary" style="display: none;">
+    <div class="card-header bg-info text-white">
+        <h6 class="mb-0"><i class="fas fa-list-check"></i> Seçilen Filtreler</h6>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-3"><strong>Kategoriler:</strong> <span id="summaryCategories">0</span></div>
+            <div class="col-md-3"><strong>Stiller:</strong> <span id="summaryStyles">0</span></div>
+            <div class="col-md-3"><strong>Markalar:</strong> <span id="summaryBrands">0</span></div>
+            <div class="col-md-3"><strong>Lokasyon:</strong> <span id="summaryLocation">-</span></div>
         </div>
     </div>
 </div>
@@ -216,21 +208,34 @@
 <script>
 // State
 let selectedCategories = [];
-let selectedBrands = [];
 let selectedStyles = [];
+let selectedBrands = [];
 let selectedLocation = null;
-let arbitrageSettings = { markupPercent: 50, roundingType: 'none', minPrice: 0 };
+let allCategories = [];
+let allStyles = [];
+let allBrands = [];
 
-// Toggle step visibility
-function toggleStep(stepNum) {
-    const content = document.getElementById(`step${stepNum}-content`);
-    content.classList.toggle('show');
+// Navigation
+function goToStep(step) {
+    // Enable target tab
+    document.getElementById(`step${step}-tab`).disabled = false;
+    
+    // Activate tab using Bootstrap
+    const tab = new bootstrap.Tab(document.getElementById(`step${step}-tab`));
+    tab.show();
+    
+    // Auto-load data based on step
+    if (step === 2 && selectedCategories.length > 0) {
+        loadStyles();
+    } else if (step === 3 && selectedStyles.length > 0) {
+        loadBrands();
+    }
 }
 
 // Load Categories
 async function loadCategories() {
-    const container = document.getElementById('categoriesContainer');
-    container.innerHTML = '<div class="spinner-border"></div>';
+    const container = document.getElementById('categoriesList');
+    container.innerHTML = '<div class="text-center"><div class="spinner-border"></div> Yükleniyor...</div>';
     
     try {
         const response = await fetch('/api/categories', {
@@ -239,188 +244,110 @@ async function loadCategories() {
         });
         const data = await response.json();
         
-        if (data.status === 'success') {
-            container.innerHTML = data.categories.map(cat => `
-                <div class="col-md-4 col-sm-6">
-                    <div class="filter-item ${selectedCategories.includes(cat.categoryID) ? 'selected' : ''}" 
-                         onclick="toggleCategory(${cat.categoryID}, this)">
-                        <input type="checkbox" ${selectedCategories.includes(cat.categoryID) ? 'checked' : ''}>
-                        ${cat.categoryName}
-                    </div>
-                </div>
-            `).join('');
+        if (data.status === 'success' && data.categories) {
+            allCategories = data.categories;
+            renderCategories(data.categories);
+        } else {
+            container.innerHTML = `<div class="alert alert-danger">${data.message || 'Yükleme hatası'}</div>`;
         }
     } catch (error) {
-        container.innerHTML = '<div class="alert alert-danger">Yükleme hatası</div>';
+        container.innerHTML = `<div class="alert alert-danger">Hata: ${error.message}</div>`;
     }
 }
 
-function toggleCategory(id, element) {
-    const index = selectedCategories.indexOf(id);
-    if (index > -1) {
-        selectedCategories.splice(index, 1);
-        element.classList.remove('selected');
-        element.querySelector('input').checked = false;
-    } else {
-        selectedCategories.push(id);
-        element.classList.add('selected');
-        element.querySelector('input').checked = true;
-    }
-    updateSummary();
-}
-
-function selectAllCategories() {
-    document.querySelectorAll('#categoriesContainer .filter-item').forEach(el => {
-        if (!el.classList.contains('selected')) {
-            el.click();
-        }
-    });
-}
-
-function clearAllCategories() {
-    selectedCategories = [];
-    document.querySelectorAll('#categoriesContainer .filter-item').forEach(el => {
-        el.classList.remove('selected');
-        el.querySelector('input').checked = false;
-    });
-    updateSummary();
-}
-
-// Load Brands
-async function loadBrands() {
-    const container = document.getElementById('brandsContainer');
-    container.innerHTML = '<div class="spinner-border"></div>';
-    
-    try {
-        const response = await fetch('/api/brands', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-        });
-        const data = await response.json();
-        
-        if (data.status === 'success') {
-            container.innerHTML = data.brands.map(brand => `
-                <div class="col-md-4 col-sm-6">
-                    <div class="filter-item ${selectedBrands.includes(brand.brandID) ? 'selected' : ''}" 
-                         onclick="toggleBrand(${brand.brandID}, this)">
-                        <input type="checkbox" ${selectedBrands.includes(brand.brandID) ? 'checked' : ''}>
-                        ${brand.brandName}
-                    </div>
-                </div>
-            `).join('');
-        }
-    } catch (error) {
-        container.innerHTML = '<div class="alert alert-danger">Yükleme hatası</div>';
-    }
-}
-
-function toggleBrand(id, element) {
-    const index = selectedBrands.indexOf(id);
-    if (index > -1) {
-        selectedBrands.splice(index, 1);
-        element.classList.remove('selected');
-        element.querySelector('input').checked = false;
-    } else {
-        selectedBrands.push(id);
-        element.classList.add('selected');
-        element.querySelector('input').checked = true;
-    }
-    updateSummary();
-}
-
-function selectAllBrands() {
-    document.querySelectorAll('#brandsContainer .filter-item').forEach(el => {
-        if (!el.classList.contains('selected')) {
-            el.click();
-        }
-    });
-}
-
-function clearAllBrands() {
-    selectedBrands = [];
-    document.querySelectorAll('#brandsContainer .filter-item').forEach(el => {
-        el.classList.remove('selected');
-        el.querySelector('input').checked = false;
-    });
-    updateSummary();
+function renderCategories(categories) {
+    const container = document.getElementById('categoriesList');
+    container.innerHTML = categories.map(cat => `
+        <div class="filter-checkbox ${selectedCategories.includes(cat.categoryID) ? 'selected' : ''}" 
+             data-id="${cat.categoryID}" data-name="${cat.categoryName}" onclick="toggleItem('categories', ${cat.categoryID}, this)">
+            <input type="checkbox" ${selectedCategories.includes(cat.categoryID) ? 'checked' : ''} style="pointer-events: none;">
+            ${cat.categoryName}
+        </div>
+    `).join('');
+    updateButtons();
 }
 
 // Load Styles
 async function loadStyles() {
-    const container = document.getElementById('stylesContainer');
-    container.innerHTML = '<div class="spinner-border"></div>';
+    const container = document.getElementById('stylesList');
+    container.innerHTML = '<div class="text-center"><div class="spinner-border"></div> Yükleniyor...</div>';
     
     try {
         const response = await fetch('/api/styles', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                categories: selectedCategories,
-                brands: selectedBrands
-            })
+            body: JSON.stringify({ categories: selectedCategories })
         });
         const data = await response.json();
         
-        if (data.status === 'success') {
-            window.allStyles = data.styles;
+        if (data.status === 'success' && data.styles) {
+            allStyles = data.styles;
             renderStyles(data.styles);
+        } else {
+            container.innerHTML = `<div class="alert alert-danger">${data.message || 'Yükleme hatası'}</div>`;
         }
     } catch (error) {
-        container.innerHTML = '<div class="alert alert-danger">Yükleme hatası</div>';
+        container.innerHTML = `<div class="alert alert-danger">Hata: ${error.message}</div>`;
     }
 }
 
 function renderStyles(styles) {
-    const container = document.getElementById('stylesContainer');
-    container.innerHTML = styles.slice(0, 100).map(style => `
-        <div class="filter-item ${selectedStyles.includes(style.styleID) ? 'selected' : ''}" 
-             onclick="toggleStyle(${style.styleID}, this)">
-            <input type="checkbox" ${selectedStyles.includes(style.styleID) ? 'checked' : ''}>
+    const container = document.getElementById('stylesList');
+    container.innerHTML = styles.slice(0, 200).map(style => `
+        <div class="filter-checkbox ${selectedStyles.includes(style.styleID) ? 'selected' : ''}" 
+             data-id="${style.styleID}" data-name="${style.styleName}" onclick="toggleItem('styles', ${style.styleID}, this)">
+            <input type="checkbox" ${selectedStyles.includes(style.styleID) ? 'checked' : ''} style="pointer-events: none;">
             <strong>${style.styleName}</strong>
             <small class="text-muted ms-2">${style.brandName || ''}</small>
         </div>
     `).join('');
     
-    if (styles.length > 100) {
-        container.innerHTML += `<p class="text-muted text-center">${styles.length - 100} daha fazla stil var. Arama yapın.</p>`;
+    if (styles.length > 200) {
+        container.innerHTML += `<p class="text-muted text-center mt-2">${styles.length - 200} daha var. Arama yapın.</p>`;
     }
+    updateButtons();
 }
 
-function toggleStyle(id, element) {
-    const index = selectedStyles.indexOf(id);
-    if (index > -1) {
-        selectedStyles.splice(index, 1);
-        element.classList.remove('selected');
-        element.querySelector('input').checked = false;
-    } else {
-        selectedStyles.push(id);
-        element.classList.add('selected');
-        element.querySelector('input').checked = true;
-    }
-    updateSummary();
-}
-
-// Style Search
-document.addEventListener('DOMContentLoaded', function() {
-    document.getElementById('styleSearch').addEventListener('input', function() {
-        const query = this.value.toLowerCase();
-        if (window.allStyles) {
-            const filtered = window.allStyles.filter(s => 
-                s.styleName.toLowerCase().includes(query) ||
-                String(s.styleID).includes(query)
-            );
-            renderStyles(filtered);
+// Load Brands
+async function loadBrands() {
+    const container = document.getElementById('brandsList');
+    container.innerHTML = '<div class="text-center"><div class="spinner-border"></div> Yükleniyor...</div>';
+    
+    try {
+        const response = await fetch('/api/brands', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ styles: selectedStyles })
+        });
+        const data = await response.json();
+        
+        if (data.status === 'success' && data.brands) {
+            allBrands = data.brands;
+            renderBrands(data.brands);
+        } else {
+            container.innerHTML = `<div class="alert alert-danger">${data.message || 'Yükleme hatası'}</div>`;
         }
-    });
-});
+    } catch (error) {
+        container.innerHTML = `<div class="alert alert-danger">Hata: ${error.message}</div>`;
+    }
+}
+
+function renderBrands(brands) {
+    const container = document.getElementById('brandsList');
+    container.innerHTML = brands.map(brand => `
+        <div class="filter-checkbox ${selectedBrands.includes(brand.brandID) ? 'selected' : ''}" 
+             data-id="${brand.brandID}" data-name="${brand.brandName}" onclick="toggleItem('brands', ${brand.brandID}, this)">
+            <input type="checkbox" ${selectedBrands.includes(brand.brandID) ? 'checked' : ''} style="pointer-events: none;">
+            ${brand.brandName}
+        </div>
+    `).join('');
+    updateButtons();
+}
 
 // Load Preview with Locations
 async function loadPreview() {
-    const previewContainer = document.getElementById('previewContainer');
-    const locationsContainer = document.getElementById('locationsContainer');
-    
-    previewContainer.style.display = 'block';
-    locationsContainer.innerHTML = '<div class="spinner-border"></div>';
+    const container = document.getElementById('previewContainer');
+    container.innerHTML = '<div class="text-center"><div class="spinner-border"></div> Yükleniyor...</div>';
     
     try {
         // Get product count
@@ -428,13 +355,14 @@ async function loadPreview() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                categories: selectedCategories,
-                brands: selectedBrands,
-                styles: selectedStyles
+                sync_options: {
+                    filter_categories: selectedCategories,
+                    filter_styles: selectedStyles,
+                    filter_brands: selectedBrands
+                }
             })
         });
         const countData = await countResponse.json();
-        document.getElementById('previewProductCount').textContent = countData.count || 0;
         
         // Get warehouses
         const whResponse = await fetch('/api/warehouses', {
@@ -443,11 +371,13 @@ async function loadPreview() {
         });
         const whData = await whResponse.json();
         
-        if (whData.status === 'success') {
-            const warehouses = whData.warehouses.sort((a, b) => b.totalStock - a.totalStock);
-            const highestStock = warehouses[0];
+        let html = `<div class="alert alert-success"><strong>${countData.count || 0}</strong> ürün bulundu</div>`;
+        
+        if (whData.status === 'success' && whData.warehouses) {
+            const warehouses = whData.warehouses.sort((a, b) => (b.totalStock || 0) - (a.totalStock || 0));
             
-            locationsContainer.innerHTML = warehouses.map((wh, idx) => `
+            html += '<h6 class="mt-3">📍 Lokasyon Seçin (Zorunlu):</h6>';
+            html += warehouses.map((wh, idx) => `
                 <div class="location-item ${idx === 0 ? 'selected' : ''}" onclick="selectLocation('${wh.id}', this)">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
@@ -455,72 +385,146 @@ async function loadPreview() {
                             <strong class="ms-2">${wh.name}</strong>
                             ${idx === 0 ? '<span class="badge bg-success ms-2">En Yüksek Stok</span>' : ''}
                         </div>
-                        <div>
-                            <span class="stock-badge bg-light">${wh.totalStock.toLocaleString()} adet</span>
-                            <button class="btn btn-sm btn-outline-primary ms-2" onclick="event.stopPropagation(); showArbitrage('${wh.id}')">
-                                <i class="fas fa-dollar-sign"></i> Fiyat Ayarı
-                            </button>
-                        </div>
+                        <span class="badge bg-light text-dark">${(wh.totalStock || 0).toLocaleString()} adet</span>
                     </div>
                 </div>
             `).join('');
             
-            // Auto-select highest stock location
-            selectedLocation = highestStock.id;
-            document.getElementById('startSyncBtn').disabled = false;
+            // Auto-select highest stock
+            if (warehouses.length > 0) {
+                selectedLocation = warehouses[0].id;
+                updateButtons();
+            }
         }
+        
+        container.innerHTML = html;
+        document.getElementById('filtersSummary').style.display = 'block';
+        updateSummary();
+        
     } catch (error) {
-        locationsContainer.innerHTML = '<div class="alert alert-danger">Yükleme hatası</div>';
+        container.innerHTML = `<div class="alert alert-danger">Hata: ${error.message}</div>`;
     }
 }
 
+// Toggle item selection
+function toggleItem(type, id, element) {
+    let array;
+    if (type === 'categories') array = selectedCategories;
+    else if (type === 'styles') array = selectedStyles;
+    else if (type === 'brands') array = selectedBrands;
+    
+    const index = array.indexOf(id);
+    if (index > -1) {
+        array.splice(index, 1);
+        element.classList.remove('selected');
+        element.querySelector('input').checked = false;
+    } else {
+        array.push(id);
+        element.classList.add('selected');
+        element.querySelector('input').checked = true;
+    }
+    updateButtons();
+    updateSummary();
+}
+
+// Toggle all
+function toggleAll(type) {
+    const checkAll = document.getElementById(`selectAll${type.charAt(0).toUpperCase() + type.slice(1)}`).checked;
+    const container = document.getElementById(`${type}List`);
+    const items = container.querySelectorAll('.filter-checkbox');
+    
+    let array;
+    if (type === 'categories') { array = selectedCategories; selectedCategories = []; }
+    else if (type === 'styles') { array = selectedStyles; selectedStyles = []; }
+    else if (type === 'brands') { array = selectedBrands; selectedBrands = []; }
+    
+    items.forEach(item => {
+        const id = parseInt(item.dataset.id);
+        if (checkAll) {
+            if (type === 'categories') selectedCategories.push(id);
+            else if (type === 'styles') selectedStyles.push(id);
+            else if (type === 'brands') selectedBrands.push(id);
+            item.classList.add('selected');
+            item.querySelector('input').checked = true;
+        } else {
+            item.classList.remove('selected');
+            item.querySelector('input').checked = false;
+        }
+    });
+    updateButtons();
+    updateSummary();
+}
+
+// Select location
 function selectLocation(id, element) {
     document.querySelectorAll('.location-item').forEach(el => el.classList.remove('selected'));
     element.classList.add('selected');
-    element.querySelector('input[type="radio"]').checked = true;
+    element.querySelector('input').checked = true;
     selectedLocation = id;
-    document.getElementById('startSyncBtn').disabled = false;
+    updateButtons();
+    updateSummary();
 }
 
-function showArbitrage(locationId) {
-    const modal = new bootstrap.Modal(document.getElementById('arbitrageModal'));
-    modal.show();
+// Filter list
+function filterList(containerId, query) {
+    const container = document.getElementById(containerId);
+    const items = container.querySelectorAll('.filter-checkbox');
+    const q = query.toLowerCase();
+    
+    items.forEach(item => {
+        const name = item.dataset.name?.toLowerCase() || '';
+        item.style.display = name.includes(q) ? 'block' : 'none';
+    });
 }
 
-function saveArbitrage() {
-    arbitrageSettings = {
-        markupPercent: parseFloat(document.getElementById('markupPercent').value) || 0,
-        roundingType: document.getElementById('roundingType').value,
-        minPrice: parseFloat(document.getElementById('minPrice').value) || 0
-    };
-    bootstrap.Modal.getInstance(document.getElementById('arbitrageModal')).hide();
-    alert('Fiyat ayarları kaydedildi!');
+// Update navigation buttons
+function updateButtons() {
+    document.getElementById('step1NextBtn').disabled = selectedCategories.length === 0;
+    document.getElementById('step2NextBtn').disabled = selectedStyles.length === 0;
+    document.getElementById('step3NextBtn').disabled = selectedBrands.length === 0;
+    document.getElementById('saveStartBtn').disabled = !selectedLocation;
 }
 
+// Update summary
 function updateSummary() {
-    document.getElementById('step1-summary').textContent = 
-        selectedCategories.length > 0 ? `${selectedCategories.length} kategori` : 'Seçilmedi';
-    document.getElementById('step2-summary').textContent = 
-        selectedBrands.length > 0 ? `${selectedBrands.length} marka` : 'Seçilmedi';
-    document.getElementById('step3-summary').textContent = 
-        selectedStyles.length > 0 ? `${selectedStyles.length} stil` : 'Seçilmedi';
-    document.getElementById('step4-summary').textContent = 
-        selectedLocation ? 'Lokasyon seçildi' : 'Seçilmedi';
+    document.getElementById('summaryCategories').textContent = selectedCategories.length;
+    document.getElementById('summaryStyles').textContent = selectedStyles.length;
+    document.getElementById('summaryBrands').textContent = selectedBrands.length;
+    document.getElementById('summaryLocation').textContent = selectedLocation || '-';
 }
 
+// Reset all filters
+function resetAllFilters() {
+    selectedCategories = [];
+    selectedStyles = [];
+    selectedBrands = [];
+    selectedLocation = null;
+    
+    ['step2-tab', 'step3-tab', 'step4-tab'].forEach(id => {
+        document.getElementById(id).disabled = true;
+    });
+    
+    goToStep(1);
+    document.getElementById('categoriesList').innerHTML = '<p class="text-muted text-center">Kategorileri yüklemek için butona tıklayın</p>';
+    document.getElementById('stylesList').innerHTML = '<p class="text-muted text-center">Önce kategorileri seçin</p>';
+    document.getElementById('brandsList').innerHTML = '<p class="text-muted text-center">Önce stilleri seçin</p>';
+    document.getElementById('previewContainer').innerHTML = '<p class="text-muted text-center">Önizleme yüklemek için butona tıklayın</p>';
+    document.getElementById('filtersSummary').style.display = 'none';
+    updateButtons();
+}
+
+// Save and start sync
 async function saveAndStartSync() {
     if (!selectedLocation) {
         alert('Lütfen bir lokasyon seçin!');
         return;
     }
     
-    // Save sync options
     const syncOptions = {
         filter_categories: selectedCategories,
-        filter_brands: selectedBrands,
         filter_styles: selectedStyles,
-        filter_warehouses: [selectedLocation],
-        arbitraj_settings: arbitrageSettings
+        filter_brands: selectedBrands,
+        filter_warehouses: [selectedLocation]
     };
     
     try {
@@ -530,12 +534,34 @@ async function saveAndStartSync() {
             body: JSON.stringify({ sync_options: syncOptions })
         });
         
-        // Redirect to sync page
+        // Redirect to sync page with autostart
         window.location.href = '/sync?autostart=1';
     } catch (error) {
         alert('Kaydetme hatası: ' + error.message);
     }
 }
+
+// Load saved filters on page load
+document.addEventListener('DOMContentLoaded', async function() {
+    try {
+        const response = await fetch('/api/config');
+        const data = await response.json();
+        
+        if (data.sync_options) {
+            selectedCategories = data.sync_options.filter_categories || [];
+            selectedStyles = data.sync_options.filter_styles || [];
+            selectedBrands = data.sync_options.filter_brands || [];
+            selectedLocation = data.sync_options.filter_warehouses?.[0] || null;
+            
+            if (selectedCategories.length > 0 || selectedStyles.length > 0 || selectedBrands.length > 0) {
+                document.getElementById('filtersSummary').style.display = 'block';
+                updateSummary();
+                updateButtons();
+            }
+        }
+    } catch (error) {
+        console.error('Error loading saved filters:', error);
+    }
+});
 </script>
 {% endblock %}
-
