@@ -36,6 +36,8 @@ class ShopifyGateway:
         """
         Create product with up to 100 variants using REST API
         
+        CRITICAL: Deletes any existing product with same title first
+        
         Returns: (product_id, product_gid, created_variants)
         Raises: Exception on failure
         """
@@ -43,6 +45,25 @@ class ShopifyGateway:
             raise ValueError(f"Cannot create product with {style_part.variant_count} variants. Max is 100. Use split_into_parts first.")
         
         print(f"   Creating product: {style_part.title} ({style_part.variant_count} variants)")
+        
+        # CRITICAL: Delete any existing product with same title
+        # This prevents "variant already exists" errors
+        try:
+            search_url = f"{self.base_url}/products.json?title={requests.utils.quote(style_part.title)}&limit=10"
+            search_resp = requests.get(search_url, headers=self.headers, timeout=30)
+            
+            if search_resp.status_code == 200:
+                existing = search_resp.json().get('products', [])
+                for product in existing:
+                    if product.get('title', '').strip().lower() == style_part.title.strip().lower():
+                        product_id = product.get('id')
+                        print(f"   🗑️ Deleting existing product {product_id}: {product.get('title')}")
+                        delete_url = f"{self.base_url}/products/{product_id}.json"
+                        requests.delete(delete_url, headers=self.headers, timeout=30)
+                        time.sleep(0.3)
+        except Exception as e:
+            print(f"   ⚠️ Could not check/delete existing products: {e}")
+            # Continue anyway
         
         # Build REST API payload with deduplication
         variants_payload = []
