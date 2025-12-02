@@ -239,8 +239,15 @@ class SyncManager:
             
             self._add_log('step', '✅ NEW ARCHITECTURE sync complete', {'stats': sync_stats})
             
-            # OLD ARCHITECTURE FALLBACK (keep for safety)
-            self._add_log('step', '⚠️ If new architecture failed, using old sync as fallback...', {'step': 'sync'})
+            # If NEW ARCHITECTURE succeeded, skip old fallback
+            if sync_stats.get('products_created', 0) > 0 or sync_stats.get('products_updated', 0) > 0:
+                self._add_log('success', '✅ NEW ARCHITECTURE successful, skipping old fallback')
+                self.status = 'completed'
+                self.progress = 100
+                return
+            
+            # OLD ARCHITECTURE FALLBACK (only if NEW failed completely)
+            self._add_log('warning', '⚠️ NEW ARCHITECTURE had errors, trying old sync as fallback...', {'step': 'sync'})
             
             product_groups = grouper.get_product_groups(status='pending')
             total_groups = len(product_groups)

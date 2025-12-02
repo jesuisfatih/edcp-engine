@@ -44,9 +44,20 @@ class ShopifyGateway:
         
         print(f"   Creating product: {style_part.title} ({style_part.variant_count} variants)")
         
-        # Build REST API payload
+        # Build REST API payload with deduplication
         variants_payload = []
+        seen_options = set()  # Track option combinations to avoid duplicates
+        
         for v in style_part.variants:
+            option_key = (v.color_name.strip(), v.size_name.strip())
+            
+            # Skip duplicate option combinations
+            if option_key in seen_options:
+                print(f"   ⚠️ Skipping duplicate variant: {v.sku} ({v.color_name} / {v.size_name})")
+                continue
+            
+            seen_options.add(option_key)
+            
             variant = {
                 'option1': v.color_name,
                 'option2': v.size_name,
@@ -64,6 +75,8 @@ class ShopifyGateway:
                 variant['inventory_quantity'] = int(v.inventory_quantity)
             
             variants_payload.append(variant)
+        
+        print(f"   Final payload: {len(variants_payload)} unique variants (from {style_part.variant_count} total)")
         
         # Product payload
         payload = {
