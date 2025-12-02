@@ -28,6 +28,18 @@ class ShopifyClient:
             "Content-Type": "application/json"
         }
         self._primary_location_id = None
+        
+        # Try to initialize Shopify Python library
+        self.use_library = False
+        if SHOPIFY_AVAILABLE:
+            try:
+                shopify.ShopifyResource.set_site(f"{self.base_url}")
+                shopify.Session.setup(api_key=None, secret=None)
+                self.session = shopify.Session(self.shop_domain, self.api_version, access_token)
+                shopify.ShopifyResource.activate_session(self.session)
+                self.use_library = True
+            except Exception:
+                self.use_library = False
 
     def _build_metafields_inputs(
         self,
@@ -82,19 +94,6 @@ class ShopifyClient:
             })
 
         return inputs
-        
-        # Try to initialize Shopify Python library
-        self.use_library = False
-        if SHOPIFY_AVAILABLE:
-            try:
-                shopify.ShopifyResource.set_site(f"{self.base_url}")
-                shopify.Session.setup(api_key=None, secret=None)
-                self.session = shopify.Session(self.shop_domain, self.api_version, access_token)
-                shopify.ShopifyResource.activate_session(self.session)
-                self.use_library = True
-            except Exception:
-                # Fallback to direct REST API calls
-                self.use_library = False
     
     def _normalize_weight_unit(self, unit: Optional[str]) -> str:
         """Convert various weight unit inputs to Shopify enum values"""
