@@ -2,6 +2,7 @@
 Shopify Gateway - 100% GraphQL API Layer (Shopify 2025-10)
 
 Uses productSet mutation for creating products with up to 2000 variants.
+Includes: images, inventory, metafields
 All operations use GraphQL - NO REST API!
 """
 
@@ -30,6 +31,9 @@ class ShopifyGateway:
             "X-Shopify-Access-Token": access_token,
             "Content-Type": "application/json"
         }
+        
+        # Cache location ID
+        self._default_location_id = None
     
     def _execute_graphql(self, query: str, variables: Dict = None) -> Dict:
         """Execute GraphQL query/mutation with error handling"""
@@ -55,20 +59,49 @@ class ShopifyGateway:
         
         return result
     
+    def _get_default_location_id(self) -> str:
+        """Get the default location ID for inventory"""
+        if self._default_location_id:
+            return self._default_location_id
+        
+        query = """
+        query {
+            locations(first: 1) {
+                edges {
+                    node {
+                        id
+                        name
+                    }
+                }
+            }
+        }
+        """
+        
+        try:
+            result = self._execute_graphql(query)
+            edges = result.get('data', {}).get('locations', {}).get('edges', [])
+            if edges:
+                self._default_location_id = edges[0]['node']['id']
+                print(f"   📍 Default location: {edges[0]['node']['name']}")
+                return self._default_location_id
+        except Exception as e:
+            print(f"   ⚠️ Could not get location: {e}")
+        
+        return None
+    
     def create_product_with_variants(self, style_part: StylePart) -> Tuple[int, str, List[Dict]]:
         """
         Create product with up to 2000 variants using GraphQL productSet mutation
         
-        Shopify 2025-10 API uses ProductSetInput structure:
-        - productOptions: [{name, position, values: [{name}]}]
-        - variants: [{optionValues: [{optionName, name}], price, sku, ...}]
-        
-        Returns: (product_id, product_gid, created_variants)
+        Includes: options, variants, images, inventory
         """
         if style_part.variant_count > 2000:
             raise ValueError(f"Cannot create product with {style_part.variant_count} variants. Max is 2000.")
         
-        print(f"   🚀 Creating product via GraphQL productSet: {style_part.title} ({style_part.variant_count} variants)")
+        print(f"   🚀 Creating product via GraphQL: {style_part.title} ({style_part.variant_count} variants)")
+        
+        # Get location for inventory
+        location_id = self._get_default_location_id()
         
         # Extract unique colors and sizes for productOptions
         colors = []
@@ -86,21 +119,13 @@ class ShopifyGateway:
         
         print(f"   📊 Unique colors: {len(colors)}, Unique sizes: {len(sizes)}")
         
-        # Build productOptions (Shopify 2025-10 format)
+        # Build productOptions
         product_options = [
-            {
-                "name": "Color",
-                "position": 1,
-                "values": colors
-            },
-            {
-                "name": "Size",
-                "position": 2,
-                "values": sizes
-            }
+            {"name": "Color", "position": 1, "values": colors},
+            {"name": "Size", "position": 2, "values": sizes}
         ]
         
-        # Build variants with optionValues (Shopify 2025-10 format)
+        # Build variants with inventory
         variants = []
         for v in style_part.variants:
             variant = {
@@ -109,15 +134,25 @@ class ShopifyGateway:
                     {"optionName": "Size", "name": v.size_name}
                 ],
                 "price": str(v.price),
-                "sku": v.sku
+                "sku": v.sku,
+                "inventoryPolicy": "DENY",
+                "inventoryManagement": "SHOPIFY"
             }
             
             if v.barcode:
                 variant["barcode"] = v.barcode
             
+            # Add inventory quantities if location available
+            if location_id and v.inventory_quantity is not None:
+                variant["inventoryQuantities"] = [{
+                    "locationId": location_id,
+                    "name": "available",
+                    "quantity": int(v.inventory_quantity)
+                }]
+            
             variants.append(variant)
         
-        # Build media/files for images
+        # Build files for images
         files = []
         if style_part.style.images:
             for img in style_part.style.images:
@@ -129,8 +164,9 @@ class ShopifyGateway:
                     if img.alt_text:
                         file_input["alt"] = img.alt_text
                     files.append(file_input)
+            print(f"   📸 Adding {len(files)} images")
         
-        # GraphQL productSet mutation (Shopify 2025-10)
+        # GraphQL productSet mutation
         mutation = """
         mutation productSet($synchronous: Boolean!, $productSet: ProductSetInput!) {
             productSet(synchronous: $synchronous, input: $productSet) {
@@ -150,6 +186,7 @@ class ShopifyGateway:
                                     value
                                 }
                                 price
+                                inventoryQuantity
                             }
                         }
                     }
@@ -197,19 +234,16 @@ class ShopifyGateway:
             product_set_input["files"] = files
         
         variables = {
-            "synchronous": True,  # Wait for completion
+            "synchronous": True,
             "productSet": product_set_input
         }
         
-        print(f"   📋 Sending {len(variants)} variants, {len(files)} images via productSet...")
+        print(f"   📋 Sending {len(variants)} variants, {len(files)} images...")
         
         # Execute mutation
         result = self._execute_graphql(mutation, variables)
         
-        # DEBUG: Log full response
-        print(f"   🔍 DEBUG Response: {json.dumps(result, indent=2)[:2000]}")
-        
-        # Check for errors - handle None cases
+        # Check for errors
         if not result:
             raise Exception("GraphQL returned None response")
         
@@ -229,10 +263,11 @@ class ShopifyGateway:
         
         # Check productSetOperation userErrors
         operation = product_set_result.get('productSetOperation', {})
-        op_errors = operation.get('userErrors', [])
-        if op_errors:
-            error_msgs = [f"{e.get('field', 'unknown')}: {e.get('message', '')}" for e in op_errors]
-            raise Exception(f"productSetOperation errors: {'; '.join(error_msgs)}")
+        if operation:
+            op_errors = operation.get('userErrors', [])
+            if op_errors:
+                error_msgs = [f"{e.get('field', 'unknown')}: {e.get('message', '')}" for e in op_errors]
+                raise Exception(f"productSetOperation errors: {'; '.join(error_msgs)}")
         
         product = product_set_result.get('product')
         if not product:
@@ -243,7 +278,8 @@ class ShopifyGateway:
         
         # Extract created variants
         created_variants = []
-        variants_edges = product.get('variants', {}).get('edges', [])
+        variants_data = product.get('variants')
+        variants_edges = variants_data.get('edges', []) if variants_data else []
         
         for edge in variants_edges:
             node = edge.get('node', {})
@@ -256,18 +292,19 @@ class ShopifyGateway:
                 'gid': node.get('id'),
                 'sku': node.get('sku', ''),
                 'option1': color,
-                'price': node.get('price', '0')
+                'price': node.get('price', '0'),
+                'inventory': node.get('inventoryQuantity', 0)
             })
         
-        print(f"   ✅ Product created via productSet: ID={product_id}, Variants={len(created_variants)}")
+        print(f"   ✅ Product created: ID={product_id}, Variants={len(created_variants)}")
         
-        # If more than 250 variants, fetch remaining
+        # Fetch remaining variants if more than 250
         if style_part.variant_count > 250:
             additional = self._fetch_remaining_variants(product_gid, 250)
             created_variants.extend(additional)
             print(f"   📦 Total variants: {len(created_variants)}")
         
-        # Assign images to variants based on color
+        # Assign images to variants
         self._assign_images_to_variants_graphql(product_gid, product)
         
         return product_id, product_gid, created_variants
@@ -302,15 +339,14 @@ class ShopifyGateway:
         }
         """
         
-        # Get cursor from first 250
         variables = {'productId': product_gid, 'first': 250, 'after': None}
         result = self._execute_graphql(query, variables)
         
-        # Safe extraction - handle None cases
         data = result.get('data') if result else None
         product = data.get('product') if data else None
         variants = product.get('variants') if product else None
         page_info = variants.get('pageInfo', {}) if variants else {}
+        
         has_next = page_info.get('hasNextPage', False)
         cursor = page_info.get('endCursor')
         
@@ -318,7 +354,6 @@ class ShopifyGateway:
             variables['after'] = cursor
             result = self._execute_graphql(query, variables)
             
-            # Safe extraction
             data = result.get('data') if result else None
             product = data.get('product') if data else None
             variants_data = product.get('variants') if product else None
@@ -341,13 +376,12 @@ class ShopifyGateway:
             has_next = page_info.get('hasNextPage', False)
             cursor = page_info.get('endCursor')
             
-            time.sleep(0.1)  # Rate limiting
+            time.sleep(0.1)
         
         return additional_variants
     
     def _assign_images_to_variants_graphql(self, product_gid: str, product_data: Dict):
         """Assign images to variants based on color matching"""
-        # Safe extraction - handle None cases
         media_data = product_data.get('media') if product_data else None
         media_edges = media_data.get('edges', []) if media_data else []
         
@@ -355,7 +389,7 @@ class ShopifyGateway:
         variants_edges = variants_data.get('edges', []) if variants_data else []
         
         if not media_edges or not variants_edges:
-            print(f"   ⚠️ No images or variants to link")
+            print(f"   ⚠️ No images ({len(media_edges)}) or variants ({len(variants_edges)}) to link")
             return
         
         # Build color → media_id mapping from alt tags
@@ -371,7 +405,7 @@ class ShopifyGateway:
                     color_to_media[color_name] = media_id
         
         if not color_to_media:
-            print(f"   ⚠️ No color mappings found in image alt tags")
+            print(f"   ⚠️ No color mappings found in {len(media_edges)} images")
             return
         
         # Group variants by color
@@ -432,7 +466,7 @@ class ShopifyGateway:
                 
                 result = self._execute_graphql(mutation, variables)
                 updated = result.get('data', {}).get('productVariantsBulkUpdate', {}).get('productVariants', [])
-                assigned_count += len(updated)
+                assigned_count += len(updated) if updated else 0
                 
                 time.sleep(0.1)
             except Exception as e:
@@ -482,7 +516,7 @@ class ShopifyGateway:
             
             result = self._execute_graphql(mutation, variables)
             media_created = result.get('data', {}).get('productCreateMedia', {}).get('media', [])
-            return len(media_created)
+            return len(media_created) if media_created else 0
         except Exception as e:
             print(f"   ⚠️ Failed to add images: {e}")
             return 0
@@ -642,3 +676,70 @@ class ShopifyGateway:
             pass
         
         return deleted_count
+    
+    def create_collection(self, title: str, description: str = "", collection_type: str = "manual") -> Optional[str]:
+        """Create a collection and return its GID"""
+        mutation = """
+        mutation collectionCreate($input: CollectionInput!) {
+            collectionCreate(input: $input) {
+                collection {
+                    id
+                    title
+                }
+                userErrors {
+                    field
+                    message
+                }
+            }
+        }
+        """
+        
+        try:
+            variables = {
+                "input": {
+                    "title": title,
+                    "descriptionHtml": description
+                }
+            }
+            
+            result = self._execute_graphql(mutation, variables)
+            collection = result.get('data', {}).get('collectionCreate', {}).get('collection')
+            
+            if collection:
+                print(f"   📁 Collection created: {title}")
+                return collection.get('id')
+            
+            return None
+        except Exception as e:
+            print(f"   ⚠️ Failed to create collection: {e}")
+            return None
+    
+    def add_product_to_collection(self, collection_gid: str, product_gid: str) -> bool:
+        """Add a product to a collection"""
+        mutation = """
+        mutation collectionAddProducts($id: ID!, $productIds: [ID!]!) {
+            collectionAddProducts(id: $id, productIds: $productIds) {
+                collection {
+                    id
+                }
+                userErrors {
+                    field
+                    message
+                }
+            }
+        }
+        """
+        
+        try:
+            variables = {
+                "id": collection_gid,
+                "productIds": [product_gid]
+            }
+            
+            result = self._execute_graphql(mutation, variables)
+            errors = result.get('data', {}).get('collectionAddProducts', {}).get('userErrors', [])
+            
+            return len(errors) == 0
+        except Exception as e:
+            print(f"   ⚠️ Failed to add product to collection: {e}")
+            return False
