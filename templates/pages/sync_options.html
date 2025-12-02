@@ -259,9 +259,9 @@ function renderCategories(categories) {
     const container = document.getElementById('categoriesList');
     container.innerHTML = categories.map(cat => `
         <div class="filter-checkbox ${selectedCategories.includes(cat.categoryID) ? 'selected' : ''}" 
-             data-id="${cat.categoryID}" data-name="${cat.categoryName}" onclick="toggleItem('categories', ${cat.categoryID}, this)">
+             data-id="${cat.categoryID}" data-name="${cat.name || cat.categoryName}" onclick="toggleItem('categories', ${cat.categoryID}, this)">
             <input type="checkbox" ${selectedCategories.includes(cat.categoryID) ? 'checked' : ''} style="pointer-events: none;">
-            ${cat.categoryName}
+            ${cat.name || cat.categoryName}
         </div>
     `).join('');
     updateButtons();
@@ -276,15 +276,19 @@ async function loadStyles() {
         const response = await fetch('/api/styles', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ categories: selectedCategories })
+            body: JSON.stringify({ category_ids: selectedCategories })
         });
         const data = await response.json();
         
-        if (data.status === 'success' && data.styles) {
-            allStyles = data.styles;
-            renderStyles(data.styles);
-        } else {
+        // API returns styles array or status success with styles
+        const styles = data.styles || [];
+        if (styles.length > 0) {
+            allStyles = styles;
+            renderStyles(styles);
+        } else if (data.status === 'error') {
             container.innerHTML = `<div class="alert alert-danger">${data.message || 'Yükleme hatası'}</div>`;
+        } else {
+            container.innerHTML = '<div class="alert alert-warning">Seçilen kategorilerde stil bulunamadı</div>';
         }
     } catch (error) {
         container.innerHTML = `<div class="alert alert-danger">Hata: ${error.message}</div>`;
@@ -295,9 +299,9 @@ function renderStyles(styles) {
     const container = document.getElementById('stylesList');
     container.innerHTML = styles.slice(0, 200).map(style => `
         <div class="filter-checkbox ${selectedStyles.includes(style.styleID) ? 'selected' : ''}" 
-             data-id="${style.styleID}" data-name="${style.styleName}" onclick="toggleItem('styles', ${style.styleID}, this)">
+             data-id="${style.styleID}" data-name="${style.styleName || style.title || ''}" onclick="toggleItem('styles', ${style.styleID}, this)">
             <input type="checkbox" ${selectedStyles.includes(style.styleID) ? 'checked' : ''} style="pointer-events: none;">
-            <strong>${style.styleName}</strong>
+            <strong>${style.styleName || style.title || 'Style ' + style.styleID}</strong>
             <small class="text-muted ms-2">${style.brandName || ''}</small>
         </div>
     `).join('');
@@ -317,15 +321,19 @@ async function loadBrands() {
         const response = await fetch('/api/brands', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ styles: selectedStyles })
+            body: JSON.stringify({ style_ids: selectedStyles })
         });
         const data = await response.json();
         
-        if (data.status === 'success' && data.brands) {
-            allBrands = data.brands;
-            renderBrands(data.brands);
-        } else {
+        // API returns brands, all_brands, or status success with brands
+        const brands = data.brands || data.all_brands || [];
+        if (brands.length > 0) {
+            allBrands = brands;
+            renderBrands(brands);
+        } else if (data.status === 'error') {
             container.innerHTML = `<div class="alert alert-danger">${data.message || 'Yükleme hatası'}</div>`;
+        } else {
+            container.innerHTML = '<div class="alert alert-warning">Marka bulunamadı</div>';
         }
     } catch (error) {
         container.innerHTML = `<div class="alert alert-danger">Hata: ${error.message}</div>`;
@@ -336,9 +344,10 @@ function renderBrands(brands) {
     const container = document.getElementById('brandsList');
     container.innerHTML = brands.map(brand => `
         <div class="filter-checkbox ${selectedBrands.includes(brand.brandID) ? 'selected' : ''}" 
-             data-id="${brand.brandID}" data-name="${brand.brandName}" onclick="toggleItem('brands', ${brand.brandID}, this)">
+             data-id="${brand.brandID}" data-name="${brand.name || brand.brandName}" onclick="toggleItem('brands', ${brand.brandID}, this)">
             <input type="checkbox" ${selectedBrands.includes(brand.brandID) ? 'checked' : ''} style="pointer-events: none;">
-            ${brand.brandName}
+            ${brand.name || brand.brandName}
+            ${brand.activeProducts ? `<small class="text-muted ms-2">(${brand.activeProducts} ürün)</small>` : ''}
         </div>
     `).join('');
     updateButtons();
