@@ -1314,5 +1314,102 @@ def get_product_detail(style_id):
         }), 500
 
 
+@app.route('/api/quick-import', methods=['POST'])
+def quick_import():
+    """Quick import a single style to Shopify"""
+    try:
+        data = request.get_json(silent=True) or {}
+        style_id = data.get('style_id')
+        warehouse = data.get('warehouse')
+        
+        if not style_id:
+            return jsonify({'status': 'error', 'message': 'style_id required'}), 400
+        
+        # Get configs
+        ss_config = get_config('ss_config') or {}
+        shopify_config = get_config('shopify_config') or {}
+        
+        if not ss_config.get('account_number') or not ss_config.get('api_key'):
+            return jsonify({'status': 'error', 'message': 'S&S API credentials not configured'}), 400
+        
+        if not shopify_config.get('shop_domain') or not shopify_config.get('access_token'):
+            return jsonify({'status': 'error', 'message': 'Shopify credentials not configured'}), 400
+        
+        # Fetch products for this style
+        ss_client = SSActivewearClient(
+            account_number=ss_config['account_number'],
+            api_key=ss_config['api_key']
+        )
+        
+        products = ss_client.get_products(styleid=str(style_id), warehouses=warehouse, limit=2000)
+        
+        if not products:
+            return jsonify({'status': 'error', 'message': 'No products found'}), 404
+        
+        # Import using sync orchestrator
+        from shopify_gateway import ShopifyGateway
+        from style_builder import StyleBuilder
+        from domain_models import Style, StyleVariant, StyleImage
+        from database import init_database
+        import uuid
+        
+        init_database()
+        
+        gateway = ShopifyGateway(
+            shop_domain=shopify_config['shop_domain'],
+            access_token=shopify_config['access_token']
+        )
+        
+        # Build style manually
+        base = products[0]
+        sync_id = str(uuid.uuid4())
+        
+        # Store products in cache first
+        from database import get_db
+        with get_db() as conn:
+            cursor = conn.cursor()
+            for product in products:
+                cursor.execute('''
+                    INSERT OR REPLACE INTO ss_products_cache
+                    (sync_id, sku, style_id, product_data, created_at)
+                    VALUES (?, ?, ?, ?, datetime('now'))
+                ''', (sync_id, product.get('sku', ''), str(style_id), json.dumps(product)))
+            conn.commit()
+        
+        # Build style using StyleBuilder
+        builder = StyleBuilder(sync_id)
+        style = builder.build_style_from_group(str(style_id))
+        
+        if not style:
+            return jsonify({'status': 'error', 'message': 'Could not build style'}), 500
+        
+        # Create product using gateway
+        parts = style.split_into_parts()
+        if not parts:
+            return jsonify({'status': 'error', 'message': 'No parts to create'}), 500
+        
+        style_part = parts[0]
+        product_id, product_gid, created_variants = gateway.create_product_with_variants(style_part)
+        
+        # Build Shopify URL
+        shop_domain = shopify_config['shop_domain'].replace('https://', '').replace('http://', '').split('/')[0]
+        shopify_url = f"https://{shop_domain}/admin/products/{product_id}"
+        
+        return jsonify({
+            'status': 'success',
+            'product_id': product_id,
+            'variants_created': len(created_variants),
+            'shopify_url': shopify_url
+        })
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
