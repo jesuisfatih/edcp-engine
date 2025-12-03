@@ -566,6 +566,106 @@ def products_count():
         response.headers['Content-Length'] = str(len(response.get_data()))
         return response, 400
 
+
+@app.route('/api/products/highest-variants', methods=['POST'])
+def get_highest_variant_products():
+    """Get products with highest variant counts from S&S API"""
+    try:
+        data = request.get_json(silent=True) or {}
+        limit = data.get('limit', 50)
+        
+        # Get credentials from database
+        ss_config = get_config('ss_config') or {}
+        account_number = ss_config.get('account_number', '').strip()
+        api_key = ss_config.get('api_key', '').strip()
+        
+        if not account_number or not api_key:
+            return jsonify({
+                'status': 'error',
+                'message': 'S&S API credentials not configured'
+            }), 400
+        
+        ss_client = SSActivewearClient(account_number, api_key)
+        
+        add_system_log('API', f'→ En yüksek varyantlı ürünler aranıyor (limit: {limit})', 'ss')
+        
+        # Fetch all products from API
+        products = ss_client.get_products(limit=10000) or []
+        
+        if not products:
+            return jsonify({
+                'status': 'success',
+                'products': [],
+                'message': 'No products found'
+            })
+        
+        # Group by style and count variants
+        style_variants = {}
+        for product in products:
+            style_id = product.get('styleID')
+            if not style_id:
+                continue
+            
+            if style_id not in style_variants:
+                style_variants[style_id] = {
+                    'styleID': style_id,
+                    'styleName': product.get('styleName', ''),
+                    'brandName': product.get('brandName', ''),
+                    'title': f"{product.get('brandName', '')} {product.get('styleName', '')}",
+                    'basePrice': product.get('piecePrice') or product.get('customerPrice') or 0,
+                    'image': None,
+                    'variantCount': 0,
+                    'colorCount': 0,
+                    'sizeCount': 0,
+                    'colors': set(),
+                    'sizes': set()
+                }
+                # Get image
+                for img_field in ['colorFrontImage', 'styleImage', 'colorSideImage']:
+                    img = product.get(img_field)
+                    if img:
+                        if not img.startswith('http'):
+                            img = f"https://www.ssactivewear.com/{img.lstrip('/')}"
+                        style_variants[style_id]['image'] = img
+                        break
+            
+            style_variants[style_id]['variantCount'] += 1
+            if product.get('colorName'):
+                style_variants[style_id]['colors'].add(product['colorName'])
+            if product.get('sizeName'):
+                style_variants[style_id]['sizes'].add(product['sizeName'])
+        
+        # Convert sets to counts
+        for style in style_variants.values():
+            style['colorCount'] = len(style['colors'])
+            style['sizeCount'] = len(style['sizes'])
+            del style['colors']
+            del style['sizes']
+        
+        # Sort by variant count descending
+        sorted_styles = sorted(style_variants.values(), key=lambda x: x['variantCount'], reverse=True)
+        
+        # Take top N
+        top_styles = sorted_styles[:limit]
+        
+        add_system_log('SUCCESS', f'En yüksek varyantlı {len(top_styles)} ürün bulundu (1. sıra: {top_styles[0]["variantCount"]} varyant)', 'ss')
+        
+        return jsonify({
+            'status': 'success',
+            'products': top_styles,
+            'total_styles': len(style_variants)
+        })
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        add_system_log('ERROR', f'Yüksek varyant araması hatası: {str(e)}', 'ss')
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+
 @app.route('/api/preview', methods=['POST'])
 def preview():
     """Preview products before sync - uses same filtering logic as sync"""

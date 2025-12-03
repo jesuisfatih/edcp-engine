@@ -136,7 +136,7 @@
 <div class="card mb-4">
     <div class="card-body">
         <div class="row align-items-center">
-            <div class="col-md-9">
+            <div class="col-md-7">
                 <div class="input-group input-group-lg">
                     <span class="input-group-text bg-primary text-white">
                         <i class="fas fa-search"></i>
@@ -148,7 +148,12 @@
                     </button>
                 </div>
             </div>
-            <div class="col-md-3 text-end">
+            <div class="col-md-3 text-center">
+                <button class="btn btn-warning btn-lg w-100" onclick="findHighVariantProducts()">
+                    <i class="fas fa-trophy"></i> En Yüksek Varyantlı
+                </button>
+            </div>
+            <div class="col-md-2 text-end">
                 <span class="text-muted" id="resultCount"></span>
             </div>
         </div>
@@ -321,6 +326,48 @@ function showLoading() {
     document.getElementById('initialState').style.display = 'none';
     document.getElementById('loadingState').style.display = 'block';
     document.getElementById('noResults').style.display = 'none';
+}
+
+// En yüksek varyantlı ürünleri bul (Tüm S&S API'dan)
+async function findHighVariantProducts() {
+    showLoading();
+    document.getElementById('searchInput').value = '';
+    
+    try {
+        const response = await fetch('/api/products/highest-variants', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ limit: 50 })
+        });
+        
+        const data = await response.json();
+        
+        if (data.status === 'error') {
+            alert('Hata: ' + data.message);
+            showInitial();
+            return;
+        }
+        
+        document.getElementById('loadingState').style.display = 'none';
+        
+        if (!data.products || data.products.length === 0) {
+            showNoResults();
+            return;
+        }
+        
+        document.getElementById('resultCount').innerHTML = 
+            `<strong>${data.products.length}</strong> en yüksek varyantlı ürün <span class="badge bg-warning text-dark">API'den canlı</span>`;
+        
+        const grid = document.getElementById('resultsGrid');
+        grid.innerHTML = data.products.map(createProductCard).join('');
+        
+        document.getElementById('loadMoreContainer').style.display = 'none';
+        
+    } catch (error) {
+        console.error('High variant search error:', error);
+        alert('Bir hata oluştu: ' + error.message);
+        showInitial();
+    }
 }
 
 function showNoResults() {
