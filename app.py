@@ -1473,39 +1473,59 @@ def get_warehouse_stock_style(style_id):
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
-@app.route('/api/warehouse-stock/sync', methods=['POST'])
-def sync_warehouse_stock():
-    """Sync warehouse stock from S&S API - runs every 2 hours"""
+# Global warehouse sync state
+warehouse_sync_state = {
+    'is_running': False,
+    'started_at': None,
+    'progress': 0,
+    'total': 0,
+    'error': None
+}
+
+def _run_warehouse_sync_background():
+    """Background task for warehouse stock sync"""
+    global warehouse_sync_state
+    import time
+    
     try:
-        import time
-        start_time = time.time()
-        
         from database import update_warehouse_stock, update_warehouse_sync_status
+        
+        warehouse_sync_state['is_running'] = True
+        warehouse_sync_state['started_at'] = datetime.now().isoformat()
+        warehouse_sync_state['progress'] = 0
+        warehouse_sync_state['error'] = None
+        
+        start_time = time.time()
         
         # Get S&S credentials
         ss_config = get_config('ss_config') or {}
         if not ss_config.get('account_number') or not ss_config.get('api_key'):
-            return jsonify({'status': 'error', 'message': 'S&S API not configured'}), 400
+            warehouse_sync_state['error'] = 'S&S API not configured'
+            warehouse_sync_state['is_running'] = False
+            return
         
         ss_client = SSActivewearClient(
             account_number=ss_config['account_number'],
             api_key=ss_config['api_key']
         )
         
-        # Fetch inventory from S&S
-        print("📦 Fetching inventory from S&S API...")
+        # Fetch inventory from S&S (this takes a long time)
+        print("📦 Fetching inventory from S&S API (background)...")
         inventory_data = ss_client.get_inventory()
         
         if not inventory_data:
-            return jsonify({'status': 'error', 'message': 'No inventory data returned'}), 500
+            warehouse_sync_state['error'] = 'No inventory data returned'
+            warehouse_sync_state['is_running'] = False
+            return
         
+        warehouse_sync_state['total'] = len(inventory_data)
         print(f"📦 Processing {len(inventory_data)} inventory items...")
         
         # Process each inventory item
         total_skus = 0
         warehouse_codes = set()
         
-        for item in inventory_data:
+        for i, item in enumerate(inventory_data):
             sku = item.get('sku', '')
             if not sku:
                 continue
@@ -1536,28 +1556,53 @@ def sync_warehouse_stock():
                     size_name=item.get('sizeName', '')
                 )
                 total_skus += 1
+            
+            # Update progress every 1000 items
+            if i % 1000 == 0:
+                warehouse_sync_state['progress'] = i
         
         duration = int(time.time() - start_time)
         update_warehouse_sync_status(total_skus, len(warehouse_codes), duration)
         
-        print(f"✅ Warehouse sync complete: {total_skus} SKUs, {len(warehouse_codes)} warehouses, {duration}s")
+        warehouse_sync_state['progress'] = warehouse_sync_state['total']
+        warehouse_sync_state['is_running'] = False
         
-        return jsonify({
-            'status': 'success',
-            'total_skus': total_skus,
-            'total_warehouses': len(warehouse_codes),
-            'duration_seconds': duration
-        })
+        print(f"✅ Warehouse sync complete: {total_skus} SKUs, {len(warehouse_codes)} warehouses, {duration}s")
         
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        warehouse_sync_state['error'] = str(e)
+        warehouse_sync_state['is_running'] = False
+
+
+@app.route('/api/warehouse-stock/sync', methods=['POST'])
+def sync_warehouse_stock():
+    """Start warehouse stock sync in background - won't block server"""
+    global warehouse_sync_state
+    
+    if warehouse_sync_state['is_running']:
+        return jsonify({
+            'status': 'already_running',
+            'message': 'Warehouse sync already in progress',
+            'progress': warehouse_sync_state['progress'],
+            'total': warehouse_sync_state['total']
+        })
+    
+    # Start background thread
+    sync_thread = threading.Thread(target=_run_warehouse_sync_background, daemon=True)
+    sync_thread.start()
+    
+    return jsonify({
+        'status': 'started',
+        'message': 'Warehouse sync started in background. Check /api/warehouse-stock/status for progress.'
+    })
 
 
 @app.route('/api/warehouse-stock/status', methods=['GET'])
 def warehouse_stock_status():
     """Get warehouse stock sync status"""
+    global warehouse_sync_state
     try:
         from database import get_warehouse_sync_status
         db_status = get_warehouse_sync_status()
@@ -1565,7 +1610,14 @@ def warehouse_stock_status():
         return jsonify({
             'status': 'success',
             'sync': db_status,
-            'scheduler': scheduler_status
+            'scheduler': scheduler_status,
+            'current_sync': {
+                'is_running': warehouse_sync_state['is_running'],
+                'started_at': warehouse_sync_state['started_at'],
+                'progress': warehouse_sync_state['progress'],
+                'total': warehouse_sync_state['total'],
+                'error': warehouse_sync_state['error']
+            }
         })
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
