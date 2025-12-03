@@ -368,12 +368,20 @@ async function search(append) {
     isLoading = false;
 }
 
+function getProxiedImage(url) {
+    // Use image proxy for S&S images to avoid CORS
+    if (!url || url === 'None' || url === 'null' || url === '') {
+        return 'https://via.placeholder.com/200x200?text=No+Image';
+    }
+    if (url.includes('ssactivewear.com')) {
+        return '/api/image-proxy?url=' + encodeURIComponent(url);
+    }
+    return url;
+}
+
 function createProductCard(product) {
     // Handle null, undefined, 'None', empty string for image
-    let image = product.image;
-    if (!image || image === 'None' || image === 'null' || image === '') {
-        image = 'https://via.placeholder.com/200x200?text=No+Image';
-    }
+    let image = getProxiedImage(product.image);
     const price = product.basePrice ? `$${parseFloat(product.basePrice).toFixed(2)}` : '-';
     
     return `
@@ -419,7 +427,8 @@ function renderProductDetail(product) {
     document.getElementById('productModalTitle').textContent = `${product.brandName} ${product.styleName}`;
     
     const firstColor = product.colors[0] || 'Default';
-    const images = product.images[firstColor] || Object.values(product.images)[0] || [];
+    const rawImages = product.images[firstColor] || Object.values(product.images)[0] || [];
+    const images = rawImages.map(url => getProxiedImage(url));
     const mainImage = images[0] || 'https://via.placeholder.com/500x500?text=No+Image';
     
     const priceDisplay = product.minPrice === product.maxPrice
@@ -535,7 +544,7 @@ function selectImage(el, url) {
 function selectColor(color, images) {
     const colorImages = images[color] || [];
     if (colorImages.length > 0) {
-        document.getElementById('mainImage').src = colorImages[0];
+        document.getElementById('mainImage').src = getProxiedImage(colorImages[0]);
     }
     event.target.parentElement.querySelectorAll('button').forEach(b => {
         b.classList.remove('btn-primary');

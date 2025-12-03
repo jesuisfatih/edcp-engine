@@ -85,23 +85,38 @@
     <h2><i class="fas fa-play-circle"></i> Aktarım</h2>
 </div>
 
-<!-- Step Indicators -->
-<div class="step-indicators" id="stepIndicators">
-    <div class="step-item" id="step-fetch">
-        <div class="step-icon"><i class="fas fa-download"></i></div>
-        <div class="step-label">Veri Çekme</div>
-    </div>
-    <div class="step-item" id="step-cache">
-        <div class="step-icon"><i class="fas fa-database"></i></div>
-        <div class="step-label">Önbellek</div>
-    </div>
-    <div class="step-item" id="step-group">
-        <div class="step-icon"><i class="fas fa-layer-group"></i></div>
-        <div class="step-label">Gruplama</div>
-    </div>
-    <div class="step-item" id="step-sync">
-        <div class="step-icon"><i class="fas fa-cloud-upload-alt"></i></div>
-        <div class="step-label">Shopify Sync</div>
+<!-- Step Indicators - Horizontal -->
+<div class="card mb-4">
+    <div class="card-body py-3">
+        <div class="d-flex justify-content-between align-items-center" id="stepIndicators">
+            <div class="text-center flex-fill step-item" id="step-fetch">
+                <div class="step-icon mx-auto mb-2" style="width:45px;height:45px;border-radius:50%;background:#28a745;color:white;display:flex;align-items:center;justify-content:center;">
+                    <i class="fas fa-download"></i>
+                </div>
+                <div class="step-label small text-muted">Veri Çekme</div>
+            </div>
+            <div class="flex-fill" style="height:2px;background:#dee2e6;margin:0 -10px;"></div>
+            <div class="text-center flex-fill step-item" id="step-cache">
+                <div class="step-icon mx-auto mb-2" style="width:45px;height:45px;border-radius:50%;background:#28a745;color:white;display:flex;align-items:center;justify-content:center;">
+                    <i class="fas fa-database"></i>
+                </div>
+                <div class="step-label small text-muted">Önbellek</div>
+            </div>
+            <div class="flex-fill" style="height:2px;background:#dee2e6;margin:0 -10px;"></div>
+            <div class="text-center flex-fill step-item" id="step-group">
+                <div class="step-icon mx-auto mb-2" style="width:45px;height:45px;border-radius:50%;background:#28a745;color:white;display:flex;align-items:center;justify-content:center;">
+                    <i class="fas fa-layer-group"></i>
+                </div>
+                <div class="step-label small text-muted">Gruplama</div>
+            </div>
+            <div class="flex-fill" style="height:2px;background:#dee2e6;margin:0 -10px;"></div>
+            <div class="text-center flex-fill step-item" id="step-sync">
+                <div class="step-icon mx-auto mb-2" style="width:45px;height:45px;border-radius:50%;background:#28a745;color:white;display:flex;align-items:center;justify-content:center;">
+                    <i class="fas fa-cloud-upload-alt"></i>
+                </div>
+                <div class="step-label small text-muted">Shopify Sync</div>
+            </div>
+        </div>
     </div>
 </div>
 

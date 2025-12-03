@@ -1149,6 +1149,45 @@ def rebuild_search_cache():
         }), 500
 
 
+@app.route('/api/image-proxy')
+def image_proxy():
+    """Proxy S&S images to avoid CORS issues"""
+    from flask import Response
+    
+    image_url = request.args.get('url', '')
+    if not image_url:
+        return '', 404
+    
+    # Only allow S&S images
+    if not image_url.startswith('https://www.ssactivewear.com/'):
+        return '', 403
+    
+    try:
+        # Get S&S credentials for auth
+        ss_config = get_config('ss_config') or {}
+        account_number = ss_config.get('account_number', '')
+        api_key = ss_config.get('api_key', '')
+        
+        headers = {}
+        if account_number and api_key:
+            import base64
+            credentials = base64.b64encode(f"{account_number}:{api_key}".encode()).decode()
+            headers['Authorization'] = f'Basic {credentials}'
+        
+        response = requests.get(image_url, headers=headers, timeout=10, stream=True)
+        
+        if response.status_code == 200:
+            return Response(
+                response.content,
+                content_type=response.headers.get('Content-Type', 'image/jpeg')
+            )
+        else:
+            return '', response.status_code
+    except Exception as e:
+        print(f"Image proxy error: {e}")
+        return '', 500
+
+
 @app.route('/api/product-detail/<style_id>', methods=['GET'])
 def get_product_detail(style_id):
     """Get detailed product information including all variants and metafields"""
