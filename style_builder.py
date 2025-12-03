@@ -344,14 +344,34 @@ class StyleBuilder:
         return sorted(list(tags))
     
     def _extract_product_metafields(self, product: Dict) -> Dict:
-        """Extract product-level metafields"""
+        """Extract ALL product-level metafields from S&S API"""
         metafields = {}
         
-        # Important fields to preserve
+        # COMPLETE list of S&S API fields to preserve as metafields
         fields = [
-            'styleID', 'partNumber', 'brandName', 'styleName',
-            'description', 'fabric', 'gender', 'baseCategory',
-            'swatchUrl', 'catalogPage'
+            # Core identifiers
+            'styleID', 'partNumber', 'brandName', 'styleName', 'title',
+            # Categories
+            'baseCategory', 'categories', 'categoryNames',
+            # Descriptions
+            'description', 'styleDescription', 'fabric', 'material',
+            # Attributes
+            'gender', 'fit', 'neckStyle', 'sleeveType', 'pocketType',
+            'fabricWeight', 'fabricContent', 'careInstructions',
+            # Pricing
+            'mapPrice', 'piecePrice', 'dozenPrice', 'casePrice', 
+            'customerPrice', 'salePrice', 'saleExpiration',
+            # Packaging
+            'caseQty', 'caseWeight', 'caseWidth', 'caseLength', 'caseHeight',
+            'PolyPackQty', 'countryOfOrigin',
+            # Flags
+            'newStyle', 'sustainableStyle', 'closeoutStyle', 'noeRetailing',
+            # Catalog
+            'catalogPageNumber', 'swatchUrl', 'comparableGroup', 'companionGroup',
+            # Brand info
+            'brandID', 'brandLogoImage', 'brandURL',
+            # Additional
+            'unitWeight', 'pieceWeight'
         ]
         
         for field in fields:
@@ -362,14 +382,25 @@ class StyleBuilder:
         return metafields
     
     def _extract_variant_metafields(self, product: Dict) -> Dict:
-        """Extract variant-level metafields"""
+        """Extract ALL variant-level metafields from S&S API"""
         metafields = {}
         
-        # Variant-specific fields
+        # COMPLETE list of variant-specific fields
         fields = [
-            'colorName', 'colorCode', 'colorFamily',
-            'sizeName', 'sizeCode', 'sizeOrder',
-            'gtin', 'yourSku'
+            # Color info
+            'colorName', 'colorCode', 'colorPriceCodeName', 
+            'colorGroup', 'colorGroupName', 'colorFamilyID', 'colorFamily',
+            # Size info
+            'sizeName', 'sizeCode', 'sizeOrder', 'sizePriceCodeName',
+            # Identifiers
+            'sku', 'gtin', 'yourSku', 'partNumber',
+            # Pricing
+            'piecePrice', 'dozenPrice', 'casePrice', 
+            'customerPrice', 'salePrice', 'mapPrice',
+            # Stock
+            'qty', 'caseQty',
+            # Weight
+            'unitWeight', 'pieceWeight', 'caseWeight'
         ]
         
         for field in fields:

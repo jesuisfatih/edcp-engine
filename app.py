@@ -1391,6 +1391,11 @@ def quick_import():
         style_part = parts[0]
         product_id, product_gid, created_variants = gateway.create_product_with_variants(style_part)
         
+        # Update metafields - CRITICAL: Store all S&S API data
+        if style.metafields:
+            metafield_success = gateway.update_metafields(product_gid, style.metafields)
+            print(f"   📝 Metafields updated: {len(style.metafields)} fields, success: {metafield_success}")
+        
         # Build Shopify URL
         shop_domain = shopify_config['shop_domain'].replace('https://', '').replace('http://', '').split('/')[0]
         shopify_url = f"https://{shop_domain}/admin/products/{product_id}"
@@ -1399,6 +1404,7 @@ def quick_import():
             'status': 'success',
             'product_id': product_id,
             'variants_created': len(created_variants),
+            'metafields_count': len(style.metafields) if style.metafields else 0,
             'shopify_url': shopify_url
         })
         
