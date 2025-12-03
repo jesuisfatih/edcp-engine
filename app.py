@@ -1371,7 +1371,7 @@ def quick_import():
             for product in products:
                 cursor.execute('''
                     INSERT OR REPLACE INTO ss_products_cache
-                    (sync_id, sku, style_id, product_data, created_at)
+                    (sync_id, sku, style_id, product_data, fetched_at)
                     VALUES (?, ?, ?, ?, datetime('now'))
                 ''', (sync_id, product.get('sku', ''), str(style_id), json.dumps(product)))
             conn.commit()
