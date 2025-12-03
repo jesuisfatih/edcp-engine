@@ -569,7 +569,7 @@ def products_count():
 
 @app.route('/api/products/highest-variants', methods=['POST'])
 def get_highest_variant_products():
-    """Get products with highest variant counts from S&S API"""
+    """Get products with highest variant counts from S&S API - FULL SCAN with pagination"""
     try:
         data = request.get_json(silent=True) or {}
         limit = data.get('limit', 50)
@@ -587,12 +587,39 @@ def get_highest_variant_products():
         
         ss_client = SSActivewearClient(account_number, api_key)
         
-        add_system_log('API', f'→ En yüksek varyantlı ürünler aranıyor (limit: {limit})', 'ss')
+        add_system_log('API', f'→ TÜM API taranıyor (pagination ile)...', 'ss')
         
-        # Fetch all products from API
-        products = ss_client.get_products(limit=10000) or []
+        # Fetch ALL products using pagination
+        all_products = []
+        offset = 0
+        batch_size = 5000
+        max_iterations = 50  # Safety limit (250,000 products max)
         
-        if not products:
+        for i in range(max_iterations):
+            add_system_log('API', f'→ Batch {i+1}: offset={offset}', 'ss')
+            
+            try:
+                batch = ss_client.get_products(limit=batch_size, offset=offset) or []
+            except Exception as batch_err:
+                add_system_log('WARNING', f'Batch {i+1} hatası: {batch_err}', 'ss')
+                break
+            
+            if not batch:
+                add_system_log('INFO', f'Batch {i+1} boş - tarama tamamlandı', 'ss')
+                break
+            
+            all_products.extend(batch)
+            add_system_log('INFO', f'Batch {i+1}: +{len(batch)} ürün (toplam: {len(all_products)})', 'ss')
+            
+            # If we got less than batch_size, we've reached the end
+            if len(batch) < batch_size:
+                break
+            
+            offset += batch_size
+        
+        add_system_log('SUCCESS', f'Toplam {len(all_products)} ürün çekildi', 'ss')
+        
+        if not all_products:
             return jsonify({
                 'status': 'success',
                 'products': [],
@@ -601,7 +628,7 @@ def get_highest_variant_products():
         
         # Group by style and count variants
         style_variants = {}
-        for product in products:
+        for product in all_products:
             style_id = product.get('styleID')
             if not style_id:
                 continue
@@ -648,12 +675,14 @@ def get_highest_variant_products():
         # Take top N
         top_styles = sorted_styles[:limit]
         
-        add_system_log('SUCCESS', f'En yüksek varyantlı {len(top_styles)} ürün bulundu (1. sıra: {top_styles[0]["variantCount"]} varyant)', 'ss')
+        max_variant = top_styles[0]['variantCount'] if top_styles else 0
+        add_system_log('SUCCESS', f'🏆 En yüksek varyant: {max_variant} | Top {len(top_styles)} ürün döndürülüyor', 'ss')
         
         return jsonify({
             'status': 'success',
             'products': top_styles,
-            'total_styles': len(style_variants)
+            'total_styles': len(style_variants),
+            'total_products_scanned': len(all_products)
         })
         
     except Exception as e:
