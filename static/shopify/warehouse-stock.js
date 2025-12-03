@@ -222,11 +222,18 @@
       apiUrl: options.apiUrl || '',
       styleId: options.styleId || '',
       variantId: options.variantId || null,
+      variantSku: options.variantSku || '',
       containerId: options.containerId || 'warehouse-stock-app'
     };
 
-    if (!config.apiUrl || !config.styleId) {
-      console.error('WarehouseStock: apiUrl and styleId required');
+    // SKU bazlı çalışma - styleId yoksa SKU kullan
+    if (!config.apiUrl) {
+      console.error('WarehouseStock: apiUrl required');
+      return;
+    }
+    
+    if (!config.styleId && !config.variantSku) {
+      console.error('WarehouseStock: styleId or variantSku required');
       return;
     }
 
@@ -285,18 +292,50 @@
     const content = document.getElementById('ws-content');
 
     try {
-      const response = await fetch(config.apiUrl + config.styleId);
+      // SKU bazlı veya style bazlı API çağrısı
+      let apiEndpoint;
+      if (config.styleId) {
+        apiEndpoint = config.apiUrl + config.styleId;
+      } else if (config.variantSku) {
+        // SKU bazlı endpoint kullan
+        apiEndpoint = config.apiUrl.replace('/style/', '/sku/') + config.variantSku;
+      }
+      
+      console.log('Fetching stock from:', apiEndpoint);
+      const response = await fetch(apiEndpoint);
       const data = await response.json();
 
-      if (data.status === 'success' && Object.keys(data.skus || {}).length > 0) {
-        stockData = data.skus;
-        loading.style.display = 'none';
-        content.style.display = 'block';
-        renderColors();
-        setupAddToCart();
-      } else {
-        throw new Error('No stock data');
+      // SKU bazlı response'u işle
+      if (data.status === 'success') {
+        if (data.skus && Object.keys(data.skus).length > 0) {
+          // Style bazlı response
+          stockData = data.skus;
+        } else if (data.warehouses && data.warehouses.length > 0) {
+          // SKU bazlı response - tek SKU için veri
+          stockData = {};
+          stockData[config.variantSku] = {
+            sku: config.variantSku,
+            color_name: 'Seçili Renk',
+            size_name: 'Seçili Beden',
+            warehouses: data.warehouses.map(w => ({
+              code: w.warehouse_code,
+              name: w.warehouse_name,
+              qty: w.quantity,
+              price: w.price || 0
+            }))
+          };
+        }
+        
+        if (Object.keys(stockData).length > 0) {
+          loading.style.display = 'none';
+          content.style.display = 'block';
+          renderColors();
+          setupAddToCart();
+          return;
+        }
       }
+      
+      throw new Error('No stock data');
     } catch (e) {
       console.error('WarehouseStock error:', e);
       loading.style.display = 'none';
