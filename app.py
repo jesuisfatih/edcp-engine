@@ -567,67 +567,58 @@ def products_count():
         return response, 400
 
 
-@app.route('/api/products/highest-variants', methods=['POST'])
-def get_highest_variant_products():
-    """Get products with highest variant counts - CACHED with refresh option"""
+# Global state for background variant scan
+variant_scan_state = {
+    'status': 'idle',  # idle, scanning, completed, error
+    'progress': 0,
+    'message': '',
+    'products': [],
+    'total_styles': 0,
+    'total_scanned': 0,
+    'started_at': None,
+    'completed_at': None
+}
+variant_scan_lock = threading.Lock()
+
+
+def _run_variant_scan_background():
+    """Background task to scan all products for variant counts"""
+    global variant_scan_state
+    
     try:
-        data = request.get_json(silent=True) or {}
-        limit = data.get('limit', 50)
-        force_refresh = data.get('force_refresh', False)
+        with variant_scan_lock:
+            variant_scan_state['status'] = 'scanning'
+            variant_scan_state['progress'] = 0
+            variant_scan_state['message'] = 'API taraması başlıyor...'
+            variant_scan_state['started_at'] = datetime.now().isoformat()
         
-        # Check cache first
-        cache_key = 'highest_variants_cache'
-        cached_data = get_config(cache_key)
-        
-        if cached_data and not force_refresh:
-            # Check if cache is fresh (less than 2 hours old)
-            cache_time = cached_data.get('cached_at', '')
-            if cache_time:
-                try:
-                    from datetime import datetime
-                    cached_dt = datetime.fromisoformat(cache_time)
-                    age_hours = (datetime.now() - cached_dt).total_seconds() / 3600
-                    
-                    if age_hours < 2:  # Cache is fresh
-                        products = cached_data.get('products', [])[:limit]
-                        add_system_log('CACHE', f'✅ Cache\'den döndürüldü ({len(products)} ürün, {age_hours:.1f} saat önce)', 'cache')
-                        return jsonify({
-                            'status': 'success',
-                            'products': products,
-                            'total_styles': cached_data.get('total_styles', 0),
-                            'total_products_scanned': cached_data.get('total_products_scanned', 0),
-                            'from_cache': True,
-                            'cache_age_hours': round(age_hours, 1)
-                        })
-                except Exception as cache_err:
-                    add_system_log('WARNING', f'Cache parse hatası: {cache_err}', 'cache')
-        
-        # Get credentials from database
         ss_config = get_config('ss_config') or {}
         account_number = ss_config.get('account_number', '').strip()
         api_key = ss_config.get('api_key', '').strip()
         
         if not account_number or not api_key:
-            return jsonify({
-                'status': 'error',
-                'message': 'S&S API credentials not configured'
-            }), 400
+            with variant_scan_lock:
+                variant_scan_state['status'] = 'error'
+                variant_scan_state['message'] = 'S&S API yapılandırılmamış'
+            return
         
         ss_client = SSActivewearClient(account_number, api_key)
         
-        add_system_log('API', f'🔄 API taraması başlıyor (pagination)...', 'ss')
-        
-        # Fetch ALL products using pagination
         all_products = []
         offset = 0
         batch_size = 5000
-        max_iterations = 50
+        batch_num = 0
         
-        for i in range(max_iterations):
+        while True:
+            batch_num += 1
+            with variant_scan_lock:
+                variant_scan_state['message'] = f'Batch {batch_num} çekiliyor... ({len(all_products)} ürün)'
+                variant_scan_state['progress'] = min(90, batch_num * 10)
+            
             try:
                 batch = ss_client.get_products(limit=batch_size, offset=offset) or []
-            except Exception as batch_err:
-                add_system_log('WARNING', f'Batch {i+1} hatası: {batch_err}', 'ss')
+            except Exception as e:
+                add_system_log('WARNING', f'Batch {batch_num} hatası: {e}', 'ss')
                 break
             
             if not batch:
@@ -639,17 +630,15 @@ def get_highest_variant_products():
                 break
             
             offset += batch_size
+            
+            if batch_num >= 50:  # Safety limit
+                break
         
-        add_system_log('SUCCESS', f'Toplam {len(all_products)} ürün çekildi', 'ss')
+        with variant_scan_lock:
+            variant_scan_state['message'] = f'{len(all_products)} ürün gruplandırılıyor...'
+            variant_scan_state['progress'] = 95
         
-        if not all_products:
-            return jsonify({
-                'status': 'success',
-                'products': [],
-                'message': 'No products found'
-            })
-        
-        # Group by style and count variants
+        # Group by style
         style_variants = {}
         for product in all_products:
             style_id = product.get('styleID')
@@ -691,34 +680,116 @@ def get_highest_variant_products():
             del style['colors']
             del style['sizes']
         
-        # Sort by variant count descending and take top 100 for cache
+        # Sort and take top 100
         sorted_styles = sorted(style_variants.values(), key=lambda x: x['variantCount'], reverse=True)
-        top_100_styles = sorted_styles[:100]
+        top_styles = sorted_styles[:100]
         
         # Save to cache
         cache_data = {
-            'products': top_100_styles,
+            'products': top_styles,
             'total_styles': len(style_variants),
             'total_products_scanned': len(all_products),
             'cached_at': datetime.now().isoformat()
         }
-        save_config(cache_key, cache_data)
+        save_config('highest_variants_cache', cache_data)
         
-        max_variant = top_100_styles[0]['variantCount'] if top_100_styles else 0
-        add_system_log('SUCCESS', f'🏆 En yüksek varyant: {max_variant} | Cache güncellendi', 'ss')
+        with variant_scan_lock:
+            variant_scan_state['status'] = 'completed'
+            variant_scan_state['progress'] = 100
+            variant_scan_state['message'] = f'Tamamlandı! {len(top_styles)} stil bulundu'
+            variant_scan_state['products'] = top_styles
+            variant_scan_state['total_styles'] = len(style_variants)
+            variant_scan_state['total_scanned'] = len(all_products)
+            variant_scan_state['completed_at'] = datetime.now().isoformat()
+        
+        max_var = top_styles[0]['variantCount'] if top_styles else 0
+        add_system_log('SUCCESS', f'🏆 Tarama tamamlandı! Max varyant: {max_var}', 'ss')
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        with variant_scan_lock:
+            variant_scan_state['status'] = 'error'
+            variant_scan_state['message'] = f'Hata: {str(e)}'
+        add_system_log('ERROR', f'Varyant tarama hatası: {e}', 'ss')
+
+
+@app.route('/api/products/highest-variants', methods=['POST'])
+def get_highest_variant_products():
+    """Get products with highest variant counts - ASYNC with polling"""
+    global variant_scan_state
+    
+    try:
+        data = request.get_json(silent=True) or {}
+        limit = data.get('limit', 50)
+        force_refresh = data.get('force_refresh', False)
+        check_status = data.get('check_status', False)
+        
+        # If just checking status
+        if check_status:
+            with variant_scan_lock:
+                return jsonify({
+                    'status': variant_scan_state['status'],
+                    'progress': variant_scan_state['progress'],
+                    'message': variant_scan_state['message'],
+                    'products': variant_scan_state['products'][:limit] if variant_scan_state['status'] == 'completed' else [],
+                    'total_styles': variant_scan_state['total_styles'],
+                    'total_scanned': variant_scan_state['total_scanned']
+                })
+        
+        # Check cache first
+        cache_key = 'highest_variants_cache'
+        cached_data = get_config(cache_key)
+        
+        if cached_data and not force_refresh:
+            cache_time = cached_data.get('cached_at', '')
+            if cache_time:
+                try:
+                    cached_dt = datetime.fromisoformat(cache_time)
+                    age_hours = (datetime.now() - cached_dt).total_seconds() / 3600
+                    
+                    if age_hours < 24:  # Cache valid for 24 hours
+                        products = cached_data.get('products', [])[:limit]
+                        return jsonify({
+                            'status': 'completed',
+                            'products': products,
+                            'total_styles': cached_data.get('total_styles', 0),
+                            'total_scanned': cached_data.get('total_products_scanned', 0),
+                            'from_cache': True,
+                            'cache_age_hours': round(age_hours, 1)
+                        })
+                except:
+                    pass
+        
+        # Check if scan is already running
+        with variant_scan_lock:
+            if variant_scan_state['status'] == 'scanning':
+                return jsonify({
+                    'status': 'scanning',
+                    'progress': variant_scan_state['progress'],
+                    'message': variant_scan_state['message']
+                })
+        
+        # Start background scan
+        with variant_scan_lock:
+            variant_scan_state['status'] = 'scanning'
+            variant_scan_state['progress'] = 0
+            variant_scan_state['message'] = 'Başlatılıyor...'
+            variant_scan_state['products'] = []
+        
+        thread = threading.Thread(target=_run_variant_scan_background)
+        thread.daemon = True
+        thread.start()
         
         return jsonify({
-            'status': 'success',
-            'products': top_100_styles[:limit],
-            'total_styles': len(style_variants),
-            'total_products_scanned': len(all_products),
-            'from_cache': False
+            'status': 'scanning',
+            'progress': 0,
+            'message': 'Tarama başlatıldı...'
         })
         
     except Exception as e:
         import traceback
         traceback.print_exc()
-        add_system_log('ERROR', f'Yüksek varyant araması hatası: {str(e)}', 'ss')
         return jsonify({
             'status': 'error',
             'message': str(e)

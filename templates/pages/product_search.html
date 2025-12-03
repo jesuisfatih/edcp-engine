@@ -328,10 +328,27 @@ function showLoading() {
     document.getElementById('noResults').style.display = 'none';
 }
 
-// En yüksek varyantlı ürünleri bul (Cache + API)
+// En yüksek varyantlı ürünleri bul (Async + Polling)
+let variantScanInterval = null;
+
 async function findHighVariantProducts(forceRefresh = false) {
-    showLoading();
     document.getElementById('searchInput').value = '';
+    
+    // Show custom loading with progress
+    document.getElementById('initialState').style.display = 'none';
+    document.getElementById('noResults').style.display = 'none';
+    document.getElementById('resultsGrid').innerHTML = '';
+    document.getElementById('loadingState').innerHTML = `
+        <div class="text-center py-5">
+            <div class="spinner-border text-warning" style="width: 3rem; height: 3rem;"></div>
+            <p class="mt-3" id="scanProgress">Başlatılıyor...</p>
+            <div class="progress mt-3" style="max-width: 400px; margin: 0 auto;">
+                <div class="progress-bar progress-bar-striped progress-bar-animated bg-warning" 
+                     id="scanProgressBar" style="width: 0%"></div>
+            </div>
+        </div>
+    `;
+    document.getElementById('loadingState').style.display = 'block';
     
     try {
         const response = await fetch('/api/products/highest-variants', {
@@ -342,45 +359,88 @@ async function findHighVariantProducts(forceRefresh = false) {
         
         const data = await response.json();
         
-        if (data.status === 'error') {
+        if (data.status === 'completed') {
+            showVariantResults(data);
+        } else if (data.status === 'scanning') {
+            // Start polling
+            startVariantPolling();
+        } else if (data.status === 'error') {
             alert('Hata: ' + data.message);
             showInitial();
-            return;
         }
-        
-        document.getElementById('loadingState').style.display = 'none';
-        
-        if (!data.products || data.products.length === 0) {
-            showNoResults();
-            return;
-        }
-        
-        // Show cache status
-        let statusBadge = '';
-        if (data.from_cache) {
-            statusBadge = `<span class="badge bg-info">Cache (${data.cache_age_hours}h önce)</span>
-                          <button class="btn btn-sm btn-outline-warning ms-2" onclick="findHighVariantProducts(true)">
-                            <i class="fas fa-sync"></i> Yenile
-                          </button>`;
-        } else {
-            statusBadge = `<span class="badge bg-success">Yeni tarama</span>`;
-        }
-        
-        document.getElementById('resultCount').innerHTML = 
-            `<strong>${data.products.length}</strong> en yüksek varyantlı | 
-             ${data.total_products_scanned?.toLocaleString() || '?'} ürün tarandı 
-             ${statusBadge}`;
-        
-        const grid = document.getElementById('resultsGrid');
-        grid.innerHTML = data.products.map(createProductCard).join('');
-        
-        document.getElementById('loadMoreContainer').style.display = 'none';
         
     } catch (error) {
         console.error('High variant search error:', error);
         alert('Bir hata oluştu: ' + error.message);
         showInitial();
     }
+}
+
+function startVariantPolling() {
+    if (variantScanInterval) clearInterval(variantScanInterval);
+    
+    variantScanInterval = setInterval(async () => {
+        try {
+            const response = await fetch('/api/products/highest-variants', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ check_status: true, limit: 50 })
+            });
+            
+            const data = await response.json();
+            
+            // Update progress
+            const progressBar = document.getElementById('scanProgressBar');
+            const progressText = document.getElementById('scanProgress');
+            if (progressBar) progressBar.style.width = data.progress + '%';
+            if (progressText) progressText.textContent = data.message || 'Taranıyor...';
+            
+            if (data.status === 'completed') {
+                clearInterval(variantScanInterval);
+                variantScanInterval = null;
+                showVariantResults(data);
+            } else if (data.status === 'error') {
+                clearInterval(variantScanInterval);
+                variantScanInterval = null;
+                alert('Hata: ' + data.message);
+                showInitial();
+            }
+        } catch (e) {
+            console.error('Polling error:', e);
+        }
+    }, 2000); // Poll every 2 seconds
+}
+
+function showVariantResults(data) {
+    document.getElementById('loadingState').style.display = 'none';
+    
+    if (!data.products || data.products.length === 0) {
+        showNoResults();
+        return;
+    }
+    
+    let statusBadge = '';
+    if (data.from_cache) {
+        statusBadge = `<span class="badge bg-info">Cache (${data.cache_age_hours}h önce)</span>
+                      <button class="btn btn-sm btn-outline-warning ms-2" onclick="findHighVariantProducts(true)">
+                        <i class="fas fa-sync"></i> Yenile
+                      </button>`;
+    } else {
+        statusBadge = `<span class="badge bg-success">Yeni tarama</span>
+                      <button class="btn btn-sm btn-outline-secondary ms-2" onclick="findHighVariantProducts(true)">
+                        <i class="fas fa-sync"></i> Tekrar Tara
+                      </button>`;
+    }
+    
+    document.getElementById('resultCount').innerHTML = 
+        `<strong>${data.products.length}</strong> en yüksek varyantlı | 
+         ${(data.total_scanned || 0).toLocaleString()} ürün tarandı 
+         ${statusBadge}`;
+    
+    const grid = document.getElementById('resultsGrid');
+    grid.innerHTML = data.products.map(createProductCard).join('');
+    
+    document.getElementById('loadMoreContainer').style.display = 'none';
 }
 
 function showNoResults() {
