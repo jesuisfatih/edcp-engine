@@ -569,10 +569,38 @@ def products_count():
 
 @app.route('/api/products/highest-variants', methods=['POST'])
 def get_highest_variant_products():
-    """Get products with highest variant counts from S&S API - FULL SCAN with pagination"""
+    """Get products with highest variant counts - CACHED with refresh option"""
     try:
         data = request.get_json(silent=True) or {}
         limit = data.get('limit', 50)
+        force_refresh = data.get('force_refresh', False)
+        
+        # Check cache first
+        cache_key = 'highest_variants_cache'
+        cached_data = get_config(cache_key)
+        
+        if cached_data and not force_refresh:
+            # Check if cache is fresh (less than 2 hours old)
+            cache_time = cached_data.get('cached_at', '')
+            if cache_time:
+                try:
+                    from datetime import datetime
+                    cached_dt = datetime.fromisoformat(cache_time)
+                    age_hours = (datetime.now() - cached_dt).total_seconds() / 3600
+                    
+                    if age_hours < 2:  # Cache is fresh
+                        products = cached_data.get('products', [])[:limit]
+                        add_system_log('CACHE', f'✅ Cache\'den döndürüldü ({len(products)} ürün, {age_hours:.1f} saat önce)', 'cache')
+                        return jsonify({
+                            'status': 'success',
+                            'products': products,
+                            'total_styles': cached_data.get('total_styles', 0),
+                            'total_products_scanned': cached_data.get('total_products_scanned', 0),
+                            'from_cache': True,
+                            'cache_age_hours': round(age_hours, 1)
+                        })
+                except Exception as cache_err:
+                    add_system_log('WARNING', f'Cache parse hatası: {cache_err}', 'cache')
         
         # Get credentials from database
         ss_config = get_config('ss_config') or {}
@@ -587,17 +615,15 @@ def get_highest_variant_products():
         
         ss_client = SSActivewearClient(account_number, api_key)
         
-        add_system_log('API', f'→ TÜM API taranıyor (pagination ile)...', 'ss')
+        add_system_log('API', f'🔄 API taraması başlıyor (pagination)...', 'ss')
         
         # Fetch ALL products using pagination
         all_products = []
         offset = 0
         batch_size = 5000
-        max_iterations = 50  # Safety limit (250,000 products max)
+        max_iterations = 50
         
         for i in range(max_iterations):
-            add_system_log('API', f'→ Batch {i+1}: offset={offset}', 'ss')
-            
             try:
                 batch = ss_client.get_products(limit=batch_size, offset=offset) or []
             except Exception as batch_err:
@@ -605,13 +631,10 @@ def get_highest_variant_products():
                 break
             
             if not batch:
-                add_system_log('INFO', f'Batch {i+1} boş - tarama tamamlandı', 'ss')
                 break
             
             all_products.extend(batch)
-            add_system_log('INFO', f'Batch {i+1}: +{len(batch)} ürün (toplam: {len(all_products)})', 'ss')
             
-            # If we got less than batch_size, we've reached the end
             if len(batch) < batch_size:
                 break
             
@@ -647,7 +670,6 @@ def get_highest_variant_products():
                     'colors': set(),
                     'sizes': set()
                 }
-                # Get image
                 for img_field in ['colorFrontImage', 'styleImage', 'colorSideImage']:
                     img = product.get(img_field)
                     if img:
@@ -669,20 +691,28 @@ def get_highest_variant_products():
             del style['colors']
             del style['sizes']
         
-        # Sort by variant count descending
+        # Sort by variant count descending and take top 100 for cache
         sorted_styles = sorted(style_variants.values(), key=lambda x: x['variantCount'], reverse=True)
+        top_100_styles = sorted_styles[:100]
         
-        # Take top N
-        top_styles = sorted_styles[:limit]
+        # Save to cache
+        cache_data = {
+            'products': top_100_styles,
+            'total_styles': len(style_variants),
+            'total_products_scanned': len(all_products),
+            'cached_at': datetime.now().isoformat()
+        }
+        save_config(cache_key, cache_data)
         
-        max_variant = top_styles[0]['variantCount'] if top_styles else 0
-        add_system_log('SUCCESS', f'🏆 En yüksek varyant: {max_variant} | Top {len(top_styles)} ürün döndürülüyor', 'ss')
+        max_variant = top_100_styles[0]['variantCount'] if top_100_styles else 0
+        add_system_log('SUCCESS', f'🏆 En yüksek varyant: {max_variant} | Cache güncellendi', 'ss')
         
         return jsonify({
             'status': 'success',
-            'products': top_styles,
+            'products': top_100_styles[:limit],
             'total_styles': len(style_variants),
-            'total_products_scanned': len(all_products)
+            'total_products_scanned': len(all_products),
+            'from_cache': False
         })
         
     except Exception as e:

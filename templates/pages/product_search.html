@@ -328,8 +328,8 @@ function showLoading() {
     document.getElementById('noResults').style.display = 'none';
 }
 
-// En yüksek varyantlı ürünleri bul (Tüm S&S API'dan)
-async function findHighVariantProducts() {
+// En yüksek varyantlı ürünleri bul (Cache + API)
+async function findHighVariantProducts(forceRefresh = false) {
     showLoading();
     document.getElementById('searchInput').value = '';
     
@@ -337,7 +337,7 @@ async function findHighVariantProducts() {
         const response = await fetch('/api/products/highest-variants', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ limit: 50 })
+            body: JSON.stringify({ limit: 50, force_refresh: forceRefresh })
         });
         
         const data = await response.json();
@@ -355,8 +355,21 @@ async function findHighVariantProducts() {
             return;
         }
         
+        // Show cache status
+        let statusBadge = '';
+        if (data.from_cache) {
+            statusBadge = `<span class="badge bg-info">Cache (${data.cache_age_hours}h önce)</span>
+                          <button class="btn btn-sm btn-outline-warning ms-2" onclick="findHighVariantProducts(true)">
+                            <i class="fas fa-sync"></i> Yenile
+                          </button>`;
+        } else {
+            statusBadge = `<span class="badge bg-success">Yeni tarama</span>`;
+        }
+        
         document.getElementById('resultCount').innerHTML = 
-            `<strong>${data.products.length}</strong> en yüksek varyantlı ürün <span class="badge bg-warning text-dark">API'den canlı</span>`;
+            `<strong>${data.products.length}</strong> en yüksek varyantlı | 
+             ${data.total_products_scanned?.toLocaleString() || '?'} ürün tarandı 
+             ${statusBadge}`;
         
         const grid = document.getElementById('resultsGrid');
         grid.innerHTML = data.products.map(createProductCard).join('');
