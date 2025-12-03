@@ -267,14 +267,14 @@ class CacheManager:
             print(f"SQLite warehouse lookup error: {e}")
         return None
     
-    def _sqlite_search_products(self, query: str, limit: int = 50) -> List[Dict]:
-        """Full-text search in SQLite cache"""
+    def _sqlite_search_products(self, query: str, limit: int = 50, offset: int = 0) -> tuple:
+        """Full-text search in SQLite cache - returns (results, total)"""
         try:
             from database import search_products_fts
-            return search_products_fts(query, limit)
+            return search_products_fts(query, limit, offset)
         except Exception as e:
             print(f"SQLite search error: {e}")
-            return []
+            return [], 0
     
     # ========================================================================
     # LAYER 3: S&S API Operations (Fallback)
@@ -527,20 +527,21 @@ class CacheManager:
         self._update_stats(start_time, 'miss')
         return None, 'miss'
     
-    def search_products(self, query: str, limit: int = 50) -> List[Dict]:
+    def search_products(self, query: str, limit: int = 50, offset: int = 0) -> tuple:
         """
         Search products - uses SQLite FTS for speed
         
         Memory cache is not used for search as queries are too varied
+        Returns: (results_list, total_count)
         """
         start_time = time.time()
         
         with self.stats_lock:
             self.stats['total_queries'] += 1
         
-        results = self._sqlite_search_products(query, limit)
+        results, total = self._sqlite_search_products(query, limit, offset)
         self._update_stats(start_time, 'sqlite' if results else 'miss')
-        return results
+        return results, total
     
     def get_warehouse_stock_by_style(self, style_id: str, use_api_fallback: bool = True) -> Dict[str, Dict]:
         """
@@ -827,9 +828,9 @@ def get_warehouse_stock_cached(sku: str, use_api: bool = True) -> Optional[Dict]
     data, source = cache_manager.get_warehouse_stock(sku, use_api)
     return data
 
-def search_products_cached(query: str, limit: int = 50) -> List[Dict]:
-    """Convenience function to search products"""
-    return cache_manager.search_products(query, limit)
+def search_products_cached(query: str, limit: int = 50, offset: int = 0) -> tuple:
+    """Convenience function to search products - returns (results, total)"""
+    return cache_manager.search_products(query, limit, offset)
 
 def get_cache_stats() -> Dict:
     """Get cache statistics"""

@@ -12,7 +12,7 @@ from database import (init_database, save_config, get_config, get_all_config, sa
 import threading
 import json
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 
 load_dotenv()
 
@@ -1142,7 +1142,7 @@ def delete_all_shopify_data():
                         'skipped_products': 0
                     })
                 
-                _add_system_log_impl('INFO', f"Silinecek ürün sayısı: {len(our_product_ids)} (sadece bizim oluşturduklarımız)", 'main')
+                add_system_log('INFO', f"Silinecek ürün sayısı: {len(our_product_ids)} (sadece bizim oluşturduklarımız)", 'main')
                 
                 for product_id in our_product_ids:
                     try:
@@ -1158,7 +1158,7 @@ def delete_all_shopify_data():
                     except Exception as e:
                         errors.append(f"Error deleting product {product_id}: {str(e)}")
                     
-                _add_system_log_impl('SUCCESS', f"Toplam {deleted_products} ürün silindi", 'main')
+                add_system_log('SUCCESS', f"Toplam {deleted_products} ürün silindi", 'main')
                 
             except Exception as e:
                 errors.append(f"Error during safe delete: {str(e)}")
@@ -1166,7 +1166,7 @@ def delete_all_shopify_data():
         # Collections için de sadece bizim oluşturduklarımızı sil (eğer mapping varsa)
         # Şimdilik collection silme devre dışı - güvenlik için
         if delete_collections:
-            _add_system_log_impl('WARNING', "Collection silme şimdilik devre dışı - güvenlik için", 'main')
+            add_system_log('WARNING', "Collection silme şimdilik devre dışı - güvenlik için", 'main')
         
         return jsonify({
             'status': 'success',
@@ -1204,7 +1204,7 @@ def search_products():
         results, total = search_products_fts(query, limit, offset)
         
         elapsed_ms = (time.time() - start_time) * 1000
-        _add_system_log_impl('CACHE', f"Search '{query[:20]}': {len(results)} sonuç, {elapsed_ms:.1f}ms", 'cache')
+        add_system_log('CACHE', f"Search '{query[:20]}': {len(results)} sonuç, {elapsed_ms:.1f}ms", 'cache')
         
         return jsonify({
             'status': 'success',
@@ -1611,7 +1611,7 @@ def get_warehouse_stock_by_sku_endpoint(sku):
         sku_data, source = cache_manager.get_warehouse_stock(sku, use_api_fallback=True)
         
         if not sku_data:
-            _add_system_log_impl('WARNING', f"SKU {sku} cache miss - API fallback", 'cache')
+            add_system_log('WARNING', f"SKU {sku} cache miss - API fallback", 'cache')
             return jsonify({
                 'status': 'error',
                 'message': f'SKU {sku} bulunamadı',
@@ -1620,7 +1620,7 @@ def get_warehouse_stock_by_sku_endpoint(sku):
         
         style_id = sku_data.get('style_id')
         elapsed_ms = (time.time() - start_time) * 1000
-        _add_system_log_impl('CACHE', f"SKU {sku} -> style {style_id} ({source}, {elapsed_ms:.1f}ms)", 'cache')
+        add_system_log('CACHE', f"SKU {sku} -> style {style_id} ({source}, {elapsed_ms:.1f}ms)", 'cache')
         
         if not style_id:
             return jsonify({
@@ -1635,9 +1635,9 @@ def get_warehouse_stock_by_sku_endpoint(sku):
         total_elapsed = (time.time() - start_time) * 1000
         
         if not stock_data:
-            _add_system_log_impl('WARNING', f"Style {style_id}: Cache ve API'de bulunamadı", 'cache')
+            add_system_log('WARNING', f"Style {style_id}: Cache ve API'de bulunamadı", 'cache')
         else:
-            _add_system_log_impl('SUCCESS', f"Style {style_id}: {len(stock_data)} SKU, toplam {total_elapsed:.1f}ms", 'cache')
+            add_system_log('SUCCESS', f"Style {style_id}: {len(stock_data)} SKU, toplam {total_elapsed:.1f}ms", 'cache')
         
         callback = request.args.get('callback')
         response_data = {
@@ -1801,15 +1801,15 @@ def _run_warehouse_sync_background():
         start_time = time.time()
         
         # Log start
-        _add_system_log_impl('CACHE', '🚀 Warehouse cache güncellemesi başlatıldı', 'cache')
-        _add_system_log_impl('SCHEDULER', '📦 Background sync başladı', 'scheduler')
+        add_system_log('CACHE', '🚀 Warehouse cache güncellemesi başlatıldı', 'cache')
+        add_system_log('SCHEDULER', '📦 Background sync başladı', 'scheduler')
         
         # Get S&S credentials
         ss_config = get_config('ss_config') or {}
         if not ss_config.get('account_number') or not ss_config.get('api_key'):
             warehouse_sync_state['error'] = 'S&S API not configured'
             warehouse_sync_state['is_running'] = False
-            _add_system_log_impl('ERROR', 'S&S API yapılandırılmamış!', 'cache')
+            add_system_log('ERROR', 'S&S API yapılandırılmamış!', 'cache')
             return
         
         ss_client = SSActivewearClient(
@@ -1817,7 +1817,7 @@ def _run_warehouse_sync_background():
             api_key=ss_config['api_key']
         )
         
-        _add_system_log_impl('API', '→ S&S Products API çağrılıyor...', 'ss')
+        add_system_log('API', '→ S&S Products API çağrılıyor...', 'ss')
         
         # Fetch PRODUCTS from S&S (includes colorName, sizeName, price AND warehouses)
         print("📦 Fetching all products from S&S API (background)...")
@@ -2141,7 +2141,7 @@ def get_system_monitor_status():
                 # Don't log every cache query - too noisy
                 pass
         except Exception as db_err:
-            _add_system_log_impl('ERROR', f"DB hatası: {str(db_err)}", 'cache')
+            add_system_log('ERROR', f"DB hatası: {str(db_err)}", 'cache')
         
         # Check connections
         ss_config = get_config('ss_config') or {}
@@ -2237,7 +2237,7 @@ def get_cache_stats():
         stats = cache_manager.get_stats()
         
         # Log to system monitor
-        _add_system_log_impl('CACHE', f"Cache stats: {stats['total_cache_hit_rate']}% hit rate, {stats['avg_response_ms']:.1f}ms avg", 'cache')
+        add_system_log('CACHE', f"Cache stats: {stats['total_cache_hit_rate']}% hit rate, {stats['avg_response_ms']:.1f}ms avg", 'cache')
         
         return jsonify({
             'status': 'success',
@@ -2256,7 +2256,7 @@ def warm_cache_endpoint():
         from cache_manager import warm_cache
         count = warm_cache(limit=limit)
         
-        _add_system_log_impl('CACHE', f"Cache warmed: {count} items", 'cache')
+        add_system_log('CACHE', f"Cache warmed: {count} items", 'cache')
         
         return jsonify({
             'status': 'success',
@@ -2272,7 +2272,7 @@ def clear_cache_endpoint():
         from cache_manager import cache_manager
         cache_manager.clear_memory_cache()
         
-        _add_system_log_impl('CACHE', "Memory cache cleared", 'cache')
+        add_system_log('CACHE', "Memory cache cleared", 'cache')
         
         return jsonify({'status': 'success', 'message': 'Memory cache cleared'})
     except Exception as e:

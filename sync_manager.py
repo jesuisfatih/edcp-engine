@@ -99,8 +99,7 @@ class SyncManager:
         self.current_index = 0
         self.step = 'init'
         self.step_progress = 0
-        self.step = None
-        self.step_progress = 0
+        self._cached_products = []  # Track fetched products for cache invalidation
         # Clear logs and created products for new sync
         self.logs = []
         self.created_products = []
@@ -279,7 +278,7 @@ class SyncManager:
             self._add_log('step', '✅ NEW ARCHITECTURE sync complete', {'stats': sync_stats})
             
             # Invalidate cache for synced styles
-            synced_styles = list(set(p.get('styleID') for p in self._cached_products if p.get('styleID'))) if hasattr(self, '_cached_products') else []
+            synced_styles = list(set(p.get('styleID') for p in self._cached_products if p.get('styleID'))) if self._cached_products else []
             if synced_styles:
                 invalidate_synced_styles(synced_styles)
             
@@ -298,7 +297,7 @@ class SyncManager:
                 self.stats['updated'],
                 self.stats['errors'],
                 self.message,
-                json.dumps(self.sync_options)
+                self.sync_options  # Pass dict directly, not JSON string
             )
             
             return  # EXIT - no old fallback

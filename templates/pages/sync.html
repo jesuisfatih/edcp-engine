@@ -404,7 +404,8 @@ async function checkSyncStatus() {
 function updateProgress(data) {
     const progress = data.progress || 0;
     const current = data.current_index || 0;
-    const total = data.total || 0;
+    // Get total from both possible sources
+    const total = data.total || (data.stats && data.stats.total) || 0;
     
     document.getElementById('progressBar').style.width = progress + '%';
     document.getElementById('progressPercent').textContent = Math.round(progress) + '%';
@@ -472,8 +473,18 @@ function updateLogs(logs) {
     if (logs.length > lastLogCount) {
         const newLogs = logs.slice(lastLogCount);
         newLogs.forEach(log => {
-            const msg = typeof log === 'string' ? log : log.message;
-            const level = typeof log === 'object' ? log.level : 'info';
+            // Handle both string and object formats
+            let msg, level;
+            if (typeof log === 'string') {
+                msg = log;
+                level = 'info';
+            } else if (typeof log === 'object') {
+                msg = log.message || log.text || JSON.stringify(log);
+                level = log.level || log.type || 'info';
+            } else {
+                msg = String(log);
+                level = 'info';
+            }
             addLog(msg, level);
         });
         lastLogCount = logs.length;

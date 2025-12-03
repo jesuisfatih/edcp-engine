@@ -708,22 +708,45 @@ async function showStockDetail(locationCode, locationName) {
     }
 }
 
-function showAllProductsDetail() {
+async function showAllProductsDetail() {
     const modal = new bootstrap.Modal(document.getElementById('stockDetailModal'));
     const modalBody = document.getElementById('stockDetailModalBody');
     const modalTitle = document.getElementById('stockDetailModalTitle');
     const modalSummary = document.getElementById('stockDetailSummary');
     
     modalTitle.innerHTML = '<i class="fas fa-boxes"></i> Tüm Filtrelenmiş Ürünler';
+    modalBody.innerHTML = '<div class="text-center py-4"><div class="spinner-border"></div><p class="mt-2">Yükleniyor...</p></div>';
+    modal.show();
     
+    // If previewProducts is empty, fetch them
     if (!previewProducts || previewProducts.length === 0) {
-        modalBody.innerHTML = '<div class="alert alert-warning">Önce bir lokasyonun stok detaylarını görüntüleyin.</div>';
-        modal.show();
-        return;
+        try {
+            const response = await fetch('/api/preview', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    sync_options: {
+                        filter_categories: selectedCategories,
+                        filter_styles: selectedStyles,
+                        filter_brands: selectedBrands
+                    }
+                })
+            });
+            const data = await response.json();
+            
+            if (data.status === 'success' && data.products) {
+                previewProducts = data.products;
+            } else {
+                modalBody.innerHTML = `<div class="alert alert-danger">${data.message || 'Ürünler yüklenemedi'}</div>`;
+                return;
+            }
+        } catch (error) {
+            modalBody.innerHTML = `<div class="alert alert-danger">Hata: ${error.message}</div>`;
+            return;
+        }
     }
     
     renderStockDetailTable(previewProducts, modalBody, modalSummary);
-    modal.show();
 }
 
 function renderStockDetailTable(products, container, summaryContainer) {
