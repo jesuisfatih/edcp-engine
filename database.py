@@ -210,6 +210,36 @@ def init_database():
             )
         ''')
         
+        # ===== WAREHOUSE STOCK CACHE =====
+        # Real-time warehouse stock for Shopify product pages
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS warehouse_stock_cache (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sku TEXT NOT NULL,
+                style_id TEXT,
+                color_name TEXT,
+                size_name TEXT,
+                warehouse_code TEXT NOT NULL,
+                warehouse_name TEXT,
+                quantity INTEGER DEFAULT 0,
+                price REAL DEFAULT 0,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(sku, warehouse_code)
+            )
+        ''')
+        
+        # Warehouse sync status
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS warehouse_sync_status (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                last_sync TIMESTAMP,
+                total_skus INTEGER DEFAULT 0,
+                total_warehouses INTEGER DEFAULT 0,
+                sync_duration_seconds INTEGER DEFAULT 0,
+                status TEXT DEFAULT 'idle'
+            )
+        ''')
+        
         # Create indexes for faster lookups
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_sync_products_sync_id ON sync_products(sync_id)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_sync_products_sku ON sync_products(sku)')
@@ -220,8 +250,106 @@ def init_database():
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_product_groups_group_id ON product_groups(group_id)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_product_groups_style_id ON product_groups(style_id)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_product_images_group_id ON product_images(product_group_id)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_warehouse_stock_sku ON warehouse_stock_cache(sku)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_warehouse_stock_style ON warehouse_stock_cache(style_id)')
         
         conn.commit()
+
+
+# ===== WAREHOUSE STOCK CACHE FUNCTIONS =====
+
+def update_warehouse_stock(sku: str, warehouse_data: list, style_id: str = None, 
+                           color_name: str = None, size_name: str = None):
+    """Update warehouse stock for a SKU"""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        for wh in warehouse_data:
+            cursor.execute('''
+                INSERT OR REPLACE INTO warehouse_stock_cache
+                (sku, style_id, color_name, size_name, warehouse_code, warehouse_name, quantity, price, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            ''', (
+                sku,
+                style_id,
+                color_name,
+                size_name,
+                wh.get('code', ''),
+                wh.get('name', ''),
+                wh.get('qty', 0),
+                wh.get('price', 0)
+            ))
+        conn.commit()
+
+
+def get_warehouse_stock_by_sku(sku: str) -> list:
+    """Get warehouse stock for a specific SKU"""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT warehouse_code, warehouse_name, quantity, price, updated_at
+            FROM warehouse_stock_cache
+            WHERE sku = ?
+            ORDER BY quantity DESC
+        ''', (sku,))
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
+
+def get_warehouse_stock_by_style(style_id: str) -> dict:
+    """Get all warehouse stock for a style (grouped by SKU)"""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT sku, color_name, size_name, warehouse_code, warehouse_name, quantity, price
+            FROM warehouse_stock_cache
+            WHERE style_id = ?
+            ORDER BY color_name, size_name, quantity DESC
+        ''', (style_id,))
+        rows = cursor.fetchall()
+        
+        # Group by SKU
+        result = {}
+        for row in rows:
+            sku = row['sku']
+            if sku not in result:
+                result[sku] = {
+                    'sku': sku,
+                    'color_name': row['color_name'],
+                    'size_name': row['size_name'],
+                    'warehouses': []
+                }
+            result[sku]['warehouses'].append({
+                'code': row['warehouse_code'],
+                'name': row['warehouse_name'],
+                'qty': row['quantity'],
+                'price': row['price']
+            })
+        
+        return result
+
+
+def update_warehouse_sync_status(total_skus: int, total_warehouses: int, duration: int, status: str = 'completed'):
+    """Update warehouse sync status"""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM warehouse_sync_status')
+        cursor.execute('''
+            INSERT INTO warehouse_sync_status
+            (last_sync, total_skus, total_warehouses, sync_duration_seconds, status)
+            VALUES (datetime('now'), ?, ?, ?, ?)
+        ''', (total_skus, total_warehouses, duration, status))
+        conn.commit()
+
+
+def get_warehouse_sync_status() -> dict:
+    """Get last warehouse sync status"""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM warehouse_sync_status ORDER BY id DESC LIMIT 1')
+        row = cursor.fetchone()
+        if row:
+            return dict(row)
+        return {'status': 'never', 'last_sync': None}
 
 def save_config(key: str, value: Any):
     """Save configuration to database"""

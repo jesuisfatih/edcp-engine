@@ -1,0 +1,536 @@
+{% comment %}
+  WAREHOUSE STOCK TABLE - Shopify Liquid Snippet
+  
+  Bu snippet'i theme'inizin product.liquid veya main-product.liquid dosyasına ekleyin.
+  Veya Shopify App Embed olarak kullanın.
+  
+  Gereksinimler:
+  1. EDCP sunucusu çalışıyor olmalı
+  2. Warehouse stock cache güncel olmalı
+  3. App Proxy ayarlanmış olmalı (opsiyonel)
+{% endcomment %}
+
+{% comment %} WAREHOUSE STOCK SETTINGS {% endcomment %}
+{% assign warehouse_api_url = "https://YOUR-EDCP-SERVER.com/api/warehouse-stock/style/" %}
+{% assign enable_warehouse_stock = true %}
+
+{% if enable_warehouse_stock %}
+<div id="warehouse-stock-container" class="warehouse-stock-section" style="margin-top: 30px;">
+  <h3 class="warehouse-stock-title">📦 Depo Bazlı Stok ve Sipariş</h3>
+  
+  <!-- Loading State -->
+  <div id="warehouse-loading" class="warehouse-loading">
+    <div class="spinner"></div>
+    <p>Depo stokları yükleniyor...</p>
+  </div>
+  
+  <!-- Error State -->
+  <div id="warehouse-error" class="warehouse-error" style="display: none;">
+    <p>⚠️ Stok bilgileri yüklenemedi. Lütfen sayfayı yenileyin.</p>
+  </div>
+  
+  <!-- Stock Table -->
+  <div id="warehouse-stock-table" style="display: none;">
+    <!-- Color Selector -->
+    <div class="warehouse-colors" id="warehouse-colors"></div>
+    
+    <!-- Size & Warehouse Matrix -->
+    <div class="warehouse-matrix-container">
+      <table class="warehouse-matrix" id="warehouse-matrix">
+        <thead>
+          <tr>
+            <th class="sizes-header">Sizes</th>
+            <!-- Size columns dynamically added -->
+          </tr>
+        </thead>
+        <tbody id="warehouse-matrix-body">
+          <!-- Warehouse rows dynamically added -->
+        </tbody>
+      </table>
+    </div>
+    
+    <!-- Order Summary -->
+    <div class="warehouse-order-summary" id="order-summary" style="display: none;">
+      <h4>📋 Sipariş Özeti</h4>
+      <div id="order-summary-list"></div>
+      <div class="order-total">
+        <strong>Toplam: <span id="order-total-qty">0</span> adet</strong>
+        <strong class="order-total-price">$<span id="order-total-price">0.00</span></strong>
+      </div>
+    </div>
+    
+    <!-- Add to Cart Button -->
+    <button type="button" id="warehouse-add-to-cart" class="warehouse-add-btn" disabled>
+      <span class="btn-icon">🛒</span>
+      <span class="btn-text">Sepete Ekle</span>
+    </button>
+  </div>
+</div>
+
+<style>
+.warehouse-stock-section {
+  border: 1px solid #e0e0e0;
+  border-radius: 12px;
+  padding: 20px;
+  background: #fafafa;
+}
+
+.warehouse-stock-title {
+  margin: 0 0 20px 0;
+  font-size: 18px;
+  color: #333;
+}
+
+.warehouse-loading {
+  text-align: center;
+  padding: 40px;
+}
+
+.warehouse-loading .spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #3498db;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 15px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.warehouse-error {
+  background: #fff3f3;
+  border: 1px solid #ffcdd2;
+  padding: 15px;
+  border-radius: 8px;
+  color: #c62828;
+}
+
+.warehouse-colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.warehouse-color-btn {
+  padding: 8px 16px;
+  border: 2px solid #ddd;
+  border-radius: 20px;
+  background: white;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s;
+}
+
+.warehouse-color-btn:hover {
+  border-color: #666;
+}
+
+.warehouse-color-btn.active {
+  background: #1a365d;
+  color: white;
+  border-color: #1a365d;
+}
+
+.warehouse-matrix-container {
+  overflow-x: auto;
+  margin-bottom: 20px;
+}
+
+.warehouse-matrix {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.warehouse-matrix th,
+.warehouse-matrix td {
+  padding: 10px 8px;
+  text-align: center;
+  border: 1px solid #e0e0e0;
+}
+
+.warehouse-matrix th {
+  background: #1a365d;
+  color: white;
+  font-weight: 600;
+  min-width: 70px;
+}
+
+.warehouse-matrix th.sizes-header {
+  background: #2d3748;
+  min-width: 150px;
+  text-align: left;
+  padding-left: 15px;
+}
+
+.warehouse-matrix .size-price {
+  font-size: 11px;
+  color: #ffd700;
+  display: block;
+}
+
+.warehouse-matrix tbody tr:nth-child(even) {
+  background: #f7fafc;
+}
+
+.warehouse-matrix tbody tr:hover {
+  background: #edf2f7;
+}
+
+.warehouse-matrix .warehouse-name {
+  text-align: left;
+  padding-left: 15px;
+  font-weight: 500;
+}
+
+.warehouse-cell {
+  position: relative;
+}
+
+.warehouse-qty-label {
+  font-size: 11px;
+  color: #666;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.warehouse-qty-input {
+  width: 50px;
+  padding: 5px;
+  text-align: center;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.warehouse-qty-input:focus {
+  border-color: #3182ce;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(49, 130, 206, 0.2);
+}
+
+.warehouse-qty-input.has-value {
+  background: #e6fffa;
+  border-color: #38b2ac;
+}
+
+.out-of-stock {
+  color: #a0aec0;
+}
+
+.warehouse-order-summary {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 15px;
+  margin-bottom: 15px;
+}
+
+.warehouse-order-summary h4 {
+  margin: 0 0 10px 0;
+  font-size: 14px;
+}
+
+.order-summary-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 5px 0;
+  font-size: 13px;
+  border-bottom: 1px dashed #e2e8f0;
+}
+
+.order-total {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 2px solid #1a365d;
+  font-size: 16px;
+}
+
+.order-total-price {
+  color: #38a169;
+}
+
+.warehouse-add-btn {
+  width: 100%;
+  padding: 15px 30px;
+  background: #38a169;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  transition: all 0.2s;
+}
+
+.warehouse-add-btn:hover:not(:disabled) {
+  background: #2f855a;
+  transform: translateY(-1px);
+}
+
+.warehouse-add-btn:disabled {
+  background: #a0aec0;
+  cursor: not-allowed;
+}
+
+.warehouse-add-btn .btn-icon {
+  font-size: 20px;
+}
+</style>
+
+<script>
+(function() {
+  // Configuration
+  const API_BASE = '{{ warehouse_api_url }}';
+  const STYLE_ID = '{{ product.metafields.ssactivewear.styleid | default: product.id }}';
+  
+  // State
+  let stockData = {};
+  let selectedColor = null;
+  let orderQuantities = {};
+  
+  // Initialize
+  document.addEventListener('DOMContentLoaded', function() {
+    loadWarehouseStock();
+  });
+  
+  async function loadWarehouseStock() {
+    const loading = document.getElementById('warehouse-loading');
+    const error = document.getElementById('warehouse-error');
+    const table = document.getElementById('warehouse-stock-table');
+    
+    try {
+      const response = await fetch(API_BASE + STYLE_ID);
+      const data = await response.json();
+      
+      if (data.status === 'success' && Object.keys(data.skus).length > 0) {
+        stockData = data.skus;
+        loading.style.display = 'none';
+        table.style.display = 'block';
+        renderColorButtons();
+      } else {
+        loading.style.display = 'none';
+        error.style.display = 'block';
+      }
+    } catch (e) {
+      console.error('Warehouse stock error:', e);
+      loading.style.display = 'none';
+      error.style.display = 'block';
+    }
+  }
+  
+  function renderColorButtons() {
+    const container = document.getElementById('warehouse-colors');
+    const colors = [...new Set(Object.values(stockData).map(s => s.color_name))].filter(Boolean);
+    
+    container.innerHTML = colors.map((color, i) => `
+      <button class="warehouse-color-btn ${i === 0 ? 'active' : ''}" 
+              onclick="window.selectWarehouseColor('${color}')">
+        ${color}
+      </button>
+    `).join('');
+    
+    if (colors.length > 0) {
+      window.selectWarehouseColor(colors[0]);
+    }
+  }
+  
+  window.selectWarehouseColor = function(color) {
+    selectedColor = color;
+    
+    // Update button states
+    document.querySelectorAll('.warehouse-color-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.textContent.trim() === color);
+    });
+    
+    renderWarehouseMatrix();
+  };
+  
+  function renderWarehouseMatrix() {
+    // Get SKUs for selected color
+    const colorSkus = Object.values(stockData).filter(s => s.color_name === selectedColor);
+    
+    if (colorSkus.length === 0) return;
+    
+    // Get unique sizes and warehouses
+    const sizes = [...new Set(colorSkus.map(s => s.size_name))];
+    const allWarehouses = {};
+    
+    colorSkus.forEach(sku => {
+      sku.warehouses.forEach(wh => {
+        if (!allWarehouses[wh.code]) {
+          allWarehouses[wh.code] = wh.name;
+        }
+      });
+    });
+    
+    const warehouseCodes = Object.keys(allWarehouses).sort();
+    
+    // Build header
+    const headerRow = document.querySelector('.warehouse-matrix thead tr');
+    headerRow.innerHTML = '<th class="sizes-header">Sizes</th>' + 
+      sizes.map(size => {
+        const sku = colorSkus.find(s => s.size_name === size);
+        const price = sku?.warehouses[0]?.price || 0;
+        return `<th>${size}<span class="size-price">$${price.toFixed(2)}</span></th>`;
+      }).join('');
+    
+    // Build body
+    const tbody = document.getElementById('warehouse-matrix-body');
+    tbody.innerHTML = warehouseCodes.map(whCode => {
+      const whName = allWarehouses[whCode];
+      
+      const cells = sizes.map(size => {
+        const sku = colorSkus.find(s => s.size_name === size);
+        if (!sku) return '<td class="out-of-stock">-</td>';
+        
+        const warehouse = sku.warehouses.find(w => w.code === whCode);
+        const qty = warehouse?.qty || 0;
+        const skuId = sku.sku;
+        
+        if (qty === 0) {
+          return `<td class="warehouse-cell out-of-stock">
+            <span class="warehouse-qty-label">Qty: 0</span>
+            <input type="number" class="warehouse-qty-input" value="0" disabled>
+          </td>`;
+        }
+        
+        return `<td class="warehouse-cell">
+          <span class="warehouse-qty-label">Qty: ${qty}</span>
+          <input type="number" class="warehouse-qty-input" 
+                 min="0" max="${qty}" value="0"
+                 data-sku="${skuId}" 
+                 data-warehouse="${whCode}"
+                 data-price="${warehouse?.price || 0}"
+                 data-max="${qty}"
+                 onchange="window.updateWarehouseQty(this)">
+        </td>`;
+      }).join('');
+      
+      return `<tr>
+        <td class="warehouse-name">${whName}</td>
+        ${cells}
+      </tr>`;
+    }).join('');
+  }
+  
+  window.updateWarehouseQty = function(input) {
+    const sku = input.dataset.sku;
+    const warehouse = input.dataset.warehouse;
+    const price = parseFloat(input.dataset.price);
+    const max = parseInt(input.dataset.max);
+    let qty = parseInt(input.value) || 0;
+    
+    // Validate
+    if (qty < 0) qty = 0;
+    if (qty > max) qty = max;
+    input.value = qty;
+    
+    // Update state
+    const key = `${sku}_${warehouse}`;
+    if (qty > 0) {
+      orderQuantities[key] = { sku, warehouse, qty, price };
+      input.classList.add('has-value');
+    } else {
+      delete orderQuantities[key];
+      input.classList.remove('has-value');
+    }
+    
+    updateOrderSummary();
+  };
+  
+  function updateOrderSummary() {
+    const summary = document.getElementById('order-summary');
+    const list = document.getElementById('order-summary-list');
+    const totalQtyEl = document.getElementById('order-total-qty');
+    const totalPriceEl = document.getElementById('order-total-price');
+    const addBtn = document.getElementById('warehouse-add-to-cart');
+    
+    const orders = Object.values(orderQuantities);
+    
+    if (orders.length === 0) {
+      summary.style.display = 'none';
+      addBtn.disabled = true;
+      return;
+    }
+    
+    summary.style.display = 'block';
+    addBtn.disabled = false;
+    
+    let totalQty = 0;
+    let totalPrice = 0;
+    
+    list.innerHTML = orders.map(order => {
+      const subtotal = order.qty * order.price;
+      totalQty += order.qty;
+      totalPrice += subtotal;
+      
+      return `<div class="order-summary-item">
+        <span>${order.warehouse}: ${order.qty} adet</span>
+        <span>$${subtotal.toFixed(2)}</span>
+      </div>`;
+    }).join('');
+    
+    totalQtyEl.textContent = totalQty;
+    totalPriceEl.textContent = totalPrice.toFixed(2);
+  }
+  
+  // Add to Cart
+  document.getElementById('warehouse-add-to-cart').addEventListener('click', async function() {
+    const orders = Object.values(orderQuantities);
+    if (orders.length === 0) return;
+    
+    this.disabled = true;
+    this.querySelector('.btn-text').textContent = 'Ekleniyor...';
+    
+    try {
+      // Build warehouse breakdown string
+      const warehouseBreakdown = orders.map(o => `${o.warehouse}:${o.qty}`).join('|');
+      const totalQty = orders.reduce((sum, o) => sum + o.qty, 0);
+      
+      // Get first variant ID (we'll use line item properties for warehouse info)
+      const variantId = {{ product.selected_or_first_available_variant.id }};
+      
+      const response = await fetch('/cart/add.js', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: variantId,
+          quantity: totalQty,
+          properties: {
+            '_warehouse_orders': warehouseBreakdown,
+            '_color': selectedColor,
+            '_fulfillment_note': `Split shipment from ${orders.length} warehouse(s)`
+          }
+        })
+      });
+      
+      if (response.ok) {
+        this.querySelector('.btn-text').textContent = '✓ Sepete Eklendi!';
+        setTimeout(() => {
+          window.location.href = '/cart';
+        }, 1000);
+      } else {
+        throw new Error('Add to cart failed');
+      }
+    } catch (e) {
+      console.error('Add to cart error:', e);
+      this.querySelector('.btn-text').textContent = 'Hata! Tekrar Deneyin';
+      this.disabled = false;
+    }
+  });
+})();
+</script>
+{% endif %}
+

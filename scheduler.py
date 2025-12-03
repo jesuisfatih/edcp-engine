@@ -138,3 +138,141 @@ class AutoSyncScheduler:
 # Global scheduler instance
 scheduler = AutoSyncScheduler()
 
+
+class WarehouseStockScheduler:
+    """Scheduler for warehouse stock cache updates - runs every 2 hours"""
+    
+    def __init__(self):
+        self.enabled = False
+        self.interval_hours = 2
+        self.last_run = None
+        self.next_run = None
+        self.running = False
+        self.thread = None
+        self.ss_config = None
+    
+    def start(self, ss_config: dict):
+        """Start warehouse stock scheduler"""
+        self.ss_config = ss_config
+        self.enabled = True
+        self.next_run = datetime.now()  # Run immediately on start
+        
+        if self.thread is None or not self.thread.is_alive():
+            self.thread = threading.Thread(target=self._scheduler_loop, daemon=True)
+            self.thread.start()
+            print("📦 Warehouse Stock Scheduler started (every 2 hours)")
+    
+    def stop(self):
+        """Stop warehouse stock scheduler"""
+        self.enabled = False
+        print("📦 Warehouse Stock Scheduler stopped")
+    
+    def get_status(self) -> dict:
+        """Get scheduler status"""
+        return {
+            'enabled': self.enabled,
+            'interval_hours': self.interval_hours,
+            'last_run': self.last_run.isoformat() if self.last_run else None,
+            'next_run': self.next_run.isoformat() if self.next_run else None,
+            'running': self.running
+        }
+    
+    def _scheduler_loop(self):
+        """Main scheduler loop"""
+        while self.enabled:
+            try:
+                now = datetime.now()
+                
+                if self.next_run and now >= self.next_run:
+                    self._sync_warehouse_stock()
+                
+                # Sleep for 5 minutes before checking again
+                time.sleep(300)
+                
+            except Exception as e:
+                print(f"Warehouse scheduler error: {e}")
+                time.sleep(300)
+    
+    def _sync_warehouse_stock(self):
+        """Sync warehouse stock from S&S API"""
+        if self.running or not self.ss_config:
+            return
+        
+        self.running = True
+        start_time = time.time()
+        
+        try:
+            from database import update_warehouse_stock, update_warehouse_sync_status
+            
+            ss_client = SSActivewearClient(
+                self.ss_config.get('account_number'),
+                self.ss_config.get('api_key')
+            )
+            
+            print("📦 Starting warehouse stock sync...")
+            
+            # Fetch inventory
+            inventory_data = ss_client.get_inventory()
+            
+            if not inventory_data:
+                print("⚠️ No inventory data returned")
+                return
+            
+            total_skus = 0
+            warehouse_codes = set()
+            
+            for item in inventory_data:
+                sku = item.get('sku', '')
+                if not sku:
+                    continue
+                
+                warehouses = item.get('warehouses', [])
+                if not warehouses:
+                    continue
+                
+                warehouse_list = []
+                for wh in warehouses:
+                    code = wh.get('warehouseAbbr', '')
+                    if code:
+                        warehouse_codes.add(code)
+                        warehouse_list.append({
+                            'code': code,
+                            'name': wh.get('warehouseName', code),
+                            'qty': wh.get('qty', 0),
+                            'price': item.get('customerPrice', item.get('piecePrice', 0))
+                        })
+                
+                if warehouse_list:
+                    update_warehouse_stock(
+                        sku=sku,
+                        warehouse_data=warehouse_list,
+                        style_id=str(item.get('styleID', '')),
+                        color_name=item.get('colorName', ''),
+                        size_name=item.get('sizeName', '')
+                    )
+                    total_skus += 1
+            
+            duration = int(time.time() - start_time)
+            update_warehouse_sync_status(total_skus, len(warehouse_codes), duration)
+            
+            self.last_run = datetime.now()
+            self.next_run = datetime.now() + timedelta(hours=self.interval_hours)
+            
+            print(f"✅ Warehouse sync complete: {total_skus} SKUs, {len(warehouse_codes)} warehouses, {duration}s")
+            
+        except Exception as e:
+            print(f"Warehouse sync error: {e}")
+        finally:
+            self.running = False
+    
+    def sync_now(self):
+        """Trigger immediate sync"""
+        if not self.running:
+            threading.Thread(target=self._sync_warehouse_stock, daemon=True).start()
+            return True
+        return False
+
+
+# Global warehouse stock scheduler
+warehouse_scheduler = WarehouseStockScheduler()
+

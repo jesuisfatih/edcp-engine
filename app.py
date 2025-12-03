@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 from ss_api_client import SSActivewearClient
 from shopify_client import ShopifyClient
 from sync_manager import SyncManager
-from scheduler import scheduler
+from scheduler import scheduler, warehouse_scheduler
 from database import (init_database, save_config, get_config, get_all_config, save_sync_history, 
                       get_last_sync_id, get_sync_products, init_product_search_cache, 
                       get_search_cache_count, populate_search_cache, search_products_fts,
@@ -1415,6 +1415,222 @@ def quick_import():
             'status': 'error',
             'message': str(e)
         }), 500
+
+
+# ===== WAREHOUSE STOCK API =====
+# These endpoints power the Shopify product page warehouse stock table
+
+@app.route('/api/warehouse-stock/sku/<sku>', methods=['GET'])
+def get_warehouse_stock_sku(sku):
+    """Get warehouse stock for a specific SKU - for Shopify App Proxy"""
+    try:
+        from database import get_warehouse_stock_by_sku
+        
+        stock_data = get_warehouse_stock_by_sku(sku)
+        
+        # Return JSONP if callback provided (for cross-domain)
+        callback = request.args.get('callback')
+        
+        response_data = {
+            'status': 'success',
+            'sku': sku,
+            'warehouses': stock_data,
+            'updated_at': stock_data[0]['updated_at'] if stock_data else None
+        }
+        
+        if callback:
+            return f"{callback}({json.dumps(response_data)})", 200, {'Content-Type': 'application/javascript'}
+        
+        return jsonify(response_data)
+        
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/warehouse-stock/style/<style_id>', methods=['GET'])
+def get_warehouse_stock_style(style_id):
+    """Get all warehouse stock for a style - for Shopify App Proxy"""
+    try:
+        from database import get_warehouse_stock_by_style
+        
+        stock_data = get_warehouse_stock_by_style(style_id)
+        
+        callback = request.args.get('callback')
+        
+        response_data = {
+            'status': 'success',
+            'style_id': style_id,
+            'skus': stock_data,
+            'total_skus': len(stock_data)
+        }
+        
+        if callback:
+            return f"{callback}({json.dumps(response_data)})", 200, {'Content-Type': 'application/javascript'}
+        
+        return jsonify(response_data)
+        
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/warehouse-stock/sync', methods=['POST'])
+def sync_warehouse_stock():
+    """Sync warehouse stock from S&S API - runs every 2 hours"""
+    try:
+        import time
+        start_time = time.time()
+        
+        from database import update_warehouse_stock, update_warehouse_sync_status
+        
+        # Get S&S credentials
+        ss_config = get_config('ss_config') or {}
+        if not ss_config.get('account_number') or not ss_config.get('api_key'):
+            return jsonify({'status': 'error', 'message': 'S&S API not configured'}), 400
+        
+        ss_client = SSActivewearClient(
+            account_number=ss_config['account_number'],
+            api_key=ss_config['api_key']
+        )
+        
+        # Fetch inventory from S&S
+        print("📦 Fetching inventory from S&S API...")
+        inventory_data = ss_client.get_inventory()
+        
+        if not inventory_data:
+            return jsonify({'status': 'error', 'message': 'No inventory data returned'}), 500
+        
+        print(f"📦 Processing {len(inventory_data)} inventory items...")
+        
+        # Process each inventory item
+        total_skus = 0
+        warehouse_codes = set()
+        
+        for item in inventory_data:
+            sku = item.get('sku', '')
+            if not sku:
+                continue
+            
+            warehouses = item.get('warehouses', [])
+            if not warehouses:
+                continue
+            
+            # Prepare warehouse data
+            warehouse_list = []
+            for wh in warehouses:
+                code = wh.get('warehouseAbbr', '')
+                if code:
+                    warehouse_codes.add(code)
+                    warehouse_list.append({
+                        'code': code,
+                        'name': wh.get('warehouseName', code),
+                        'qty': wh.get('qty', 0),
+                        'price': item.get('customerPrice', item.get('piecePrice', 0))
+                    })
+            
+            if warehouse_list:
+                update_warehouse_stock(
+                    sku=sku,
+                    warehouse_data=warehouse_list,
+                    style_id=str(item.get('styleID', '')),
+                    color_name=item.get('colorName', ''),
+                    size_name=item.get('sizeName', '')
+                )
+                total_skus += 1
+        
+        duration = int(time.time() - start_time)
+        update_warehouse_sync_status(total_skus, len(warehouse_codes), duration)
+        
+        print(f"✅ Warehouse sync complete: {total_skus} SKUs, {len(warehouse_codes)} warehouses, {duration}s")
+        
+        return jsonify({
+            'status': 'success',
+            'total_skus': total_skus,
+            'total_warehouses': len(warehouse_codes),
+            'duration_seconds': duration
+        })
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/warehouse-stock/status', methods=['GET'])
+def warehouse_stock_status():
+    """Get warehouse stock sync status"""
+    try:
+        from database import get_warehouse_sync_status
+        db_status = get_warehouse_sync_status()
+        scheduler_status = warehouse_scheduler.get_status()
+        return jsonify({
+            'status': 'success',
+            'sync': db_status,
+            'scheduler': scheduler_status
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/warehouse-stock/scheduler/start', methods=['POST'])
+def start_warehouse_scheduler():
+    """Start warehouse stock scheduler (runs every 2 hours)"""
+    try:
+        ss_config = get_config('ss_config') or {}
+        if not ss_config.get('account_number') or not ss_config.get('api_key'):
+            return jsonify({'status': 'error', 'message': 'S&S API not configured'}), 400
+        
+        warehouse_scheduler.start(ss_config)
+        return jsonify({'status': 'success', 'message': 'Warehouse scheduler started'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/warehouse-stock/scheduler/stop', methods=['POST'])
+def stop_warehouse_scheduler():
+    """Stop warehouse stock scheduler"""
+    try:
+        warehouse_scheduler.stop()
+        return jsonify({'status': 'success', 'message': 'Warehouse scheduler stopped'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+# ===== SHOPIFY APP PROXY ENDPOINT =====
+# This endpoint is called from Shopify storefront via App Proxy
+# URL: https://your-store.myshopify.com/apps/warehouse/stock?sku=XXX
+
+@app.route('/apps/warehouse/stock', methods=['GET'])
+def shopify_warehouse_proxy():
+    """Shopify App Proxy endpoint for warehouse stock"""
+    try:
+        from database import get_warehouse_stock_by_sku, get_warehouse_stock_by_style
+        
+        sku = request.args.get('sku')
+        style_id = request.args.get('style_id')
+        
+        if sku:
+            stock_data = get_warehouse_stock_by_sku(sku)
+            result = {
+                'sku': sku,
+                'warehouses': stock_data
+            }
+        elif style_id:
+            stock_data = get_warehouse_stock_by_style(style_id)
+            result = {
+                'style_id': style_id,
+                'skus': stock_data
+            }
+        else:
+            return jsonify({'error': 'sku or style_id required'}), 400
+        
+        # Shopify App Proxy returns content-type based on extension
+        # For .js it expects JavaScript, for .json it expects JSON
+        response = jsonify(result)
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        return response
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 if __name__ == '__main__':
