@@ -1,0 +1,988 @@
+{% comment %}
+  ══════════════════════════════════════════════════════════════════════════════
+  DEPO BAZLI VARYANT MATRİX SİSTEMİ
+  Rakip benchmark'ına uygun profesyonel görünüm
+  ══════════════════════════════════════════════════════════════════════════════
+{% endcomment %}
+
+<div id="warehouse-matrix-app" style="margin: 30px 0;">
+  <style>
+    /* ═══════════════════════════════════════════════════════════════════════ */
+    /* GENEL STILLER */
+    /* ═══════════════════════════════════════════════════════════════════════ */
+    #warehouse-matrix-app {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+    }
+    
+    #warehouse-matrix-app * {
+      box-sizing: border-box;
+    }
+    
+    /* ═══════════════════════════════════════════════════════════════════════ */
+    /* RENK SEÇİCİ */
+    /* ═══════════════════════════════════════════════════════════════════════ */
+    .color-selector-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 25px;
+      padding-bottom: 20px;
+      border-bottom: 2px solid #eee;
+    }
+    
+    .color-option {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      cursor: pointer;
+      padding: 8px;
+      border: 2px solid transparent;
+      border-radius: 8px;
+      transition: all 0.2s ease;
+    }
+    
+    .color-option:hover {
+      border-color: #ddd;
+      background: #f9f9f9;
+    }
+    
+    .color-option.active {
+      border-color: #2c3e50;
+      background: #f0f4f8;
+    }
+    
+    .color-swatch {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border: 2px solid #ddd;
+      margin-bottom: 5px;
+    }
+    
+    .color-name {
+      font-size: 11px;
+      color: #666;
+      text-align: center;
+      max-width: 60px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    
+    /* ═══════════════════════════════════════════════════════════════════════ */
+    /* MATRİX TABLOSU */
+    /* ═══════════════════════════════════════════════════════════════════════ */
+    .matrix-container {
+      overflow-x: auto;
+      margin-bottom: 20px;
+    }
+    
+    .warehouse-matrix-table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 600px;
+    }
+    
+    /* HEADER - BEDEN + FİYAT */
+    .matrix-header {
+      background: #2c3e50;
+      color: white;
+    }
+    
+    .matrix-header th {
+      padding: 12px 8px;
+      text-align: center;
+      font-weight: 600;
+      min-width: 80px;
+    }
+    
+    .matrix-header th:first-child {
+      text-align: left;
+      padding-left: 15px;
+      min-width: 180px;
+      background: #1a252f;
+    }
+    
+    .size-name {
+      font-size: 16px;
+      font-weight: 700;
+      display: block;
+    }
+    
+    .size-price {
+      font-size: 13px;
+      font-weight: 400;
+      opacity: 0.9;
+      display: block;
+      margin-top: 3px;
+    }
+    
+    /* DEPO SATIRLARI */
+    .warehouse-row {
+      border-bottom: 1px solid #eee;
+      transition: background 0.15s ease;
+    }
+    
+    .warehouse-row:hover {
+      background: #f8f9fa;
+    }
+    
+    .warehouse-row:nth-child(even) {
+      background: #fafbfc;
+    }
+    
+    .warehouse-row:nth-child(even):hover {
+      background: #f0f2f4;
+    }
+    
+    .warehouse-name-cell {
+      padding: 10px 15px;
+      font-weight: 500;
+      color: #333;
+      font-size: 13px;
+      border-right: 2px solid #eee;
+      white-space: nowrap;
+    }
+    
+    /* STOK HÜCRESİ */
+    .stock-cell {
+      padding: 8px;
+      text-align: center;
+      vertical-align: middle;
+    }
+    
+    .stock-qty-label {
+      font-size: 11px;
+      color: #888;
+      margin-bottom: 4px;
+      display: block;
+    }
+    
+    .stock-qty-label.out-of-stock {
+      color: #dc3545;
+    }
+    
+    .stock-qty-label.low-stock {
+      color: #fd7e14;
+    }
+    
+    .stock-qty-label.in-stock {
+      color: #28a745;
+    }
+    
+    /* QUANTITY INPUT */
+    .qty-input-wrapper {
+      display: inline-block;
+    }
+    
+    .qty-input {
+      width: 55px;
+      height: 32px;
+      text-align: center;
+      border: 2px solid #e9a825;
+      border-radius: 4px;
+      font-size: 14px;
+      font-weight: 500;
+      color: #333;
+      background: #fff;
+      transition: all 0.2s ease;
+    }
+    
+    .qty-input:focus {
+      outline: none;
+      border-color: #2c3e50;
+      box-shadow: 0 0 0 3px rgba(44, 62, 80, 0.1);
+    }
+    
+    .qty-input:disabled {
+      background: #f5f5f5;
+      border-color: #ddd;
+      color: #999;
+      cursor: not-allowed;
+    }
+    
+    .qty-input.has-value {
+      background: #fffbeb;
+      border-color: #e9a825;
+    }
+    
+    /* ═══════════════════════════════════════════════════════════════════════ */
+    /* TOPLAM ÖZETİ */
+    /* ═══════════════════════════════════════════════════════════════════════ */
+    .order-summary {
+      background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+      border-radius: 12px;
+      padding: 20px;
+      margin-top: 20px;
+      border: 1px solid #dee2e6;
+    }
+    
+    .order-summary-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #2c3e50;
+      margin-bottom: 15px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .order-summary-title::before {
+      content: "🛒";
+    }
+    
+    .summary-items {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 15px;
+      max-height: 150px;
+      overflow-y: auto;
+    }
+    
+    .summary-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 12px;
+      background: white;
+      border-radius: 6px;
+      font-size: 13px;
+      border: 1px solid #e9ecef;
+    }
+    
+    .summary-item-details {
+      color: #495057;
+    }
+    
+    .summary-item-qty {
+      font-weight: 600;
+      color: #2c3e50;
+      background: #e9ecef;
+      padding: 2px 10px;
+      border-radius: 12px;
+    }
+    
+    .summary-total {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-top: 15px;
+      border-top: 2px solid #dee2e6;
+      font-size: 18px;
+      font-weight: 700;
+    }
+    
+    .summary-total-label {
+      color: #495057;
+    }
+    
+    .summary-total-value {
+      color: #2c3e50;
+    }
+    
+    .no-selection {
+      color: #6c757d;
+      font-style: italic;
+      text-align: center;
+      padding: 20px;
+    }
+    
+    /* ═══════════════════════════════════════════════════════════════════════ */
+    /* SEPETE EKLE BUTONU */
+    /* ═══════════════════════════════════════════════════════════════════════ */
+    .add-to-cart-section {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      margin-top: 20px;
+    }
+    
+    .wishlist-btn {
+      width: 50px;
+      height: 50px;
+      border: 2px solid #ddd;
+      border-radius: 8px;
+      background: white;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s ease;
+    }
+    
+    .wishlist-btn:hover {
+      border-color: #dc3545;
+      color: #dc3545;
+    }
+    
+    .wishlist-btn svg {
+      width: 24px;
+      height: 24px;
+    }
+    
+    .matrix-add-to-cart-btn {
+      flex: 1;
+      height: 50px;
+      background: #2c3e50;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    
+    .matrix-add-to-cart-btn:hover:not(:disabled) {
+      background: #1a252f;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(44, 62, 80, 0.3);
+    }
+    
+    .matrix-add-to-cart-btn:disabled {
+      background: #adb5bd;
+      cursor: not-allowed;
+    }
+    
+    /* ═══════════════════════════════════════════════════════════════════════ */
+    /* YÜKLENİYOR */
+    /* ═══════════════════════════════════════════════════════════════════════ */
+    .matrix-loading {
+      text-align: center;
+      padding: 40px;
+      color: #6c757d;
+    }
+    
+    .matrix-loading .spinner {
+      width: 40px;
+      height: 40px;
+      border: 4px solid #e9ecef;
+      border-top-color: #2c3e50;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 15px;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    .matrix-error {
+      text-align: center;
+      padding: 30px;
+      color: #dc3545;
+      background: #fff5f5;
+      border-radius: 8px;
+      border: 1px solid #f5c6cb;
+    }
+    
+    /* ═══════════════════════════════════════════════════════════════════════ */
+    /* RESPONSİVE */
+    /* ═══════════════════════════════════════════════════════════════════════ */
+    @media (max-width: 768px) {
+      .warehouse-matrix-table {
+        font-size: 12px;
+      }
+      
+      .matrix-header th {
+        padding: 8px 4px;
+        min-width: 60px;
+      }
+      
+      .warehouse-name-cell {
+        font-size: 11px;
+        padding: 8px 10px;
+      }
+      
+      .qty-input {
+        width: 45px;
+        height: 28px;
+        font-size: 12px;
+      }
+      
+      .stock-qty-label {
+        font-size: 10px;
+      }
+    }
+  </style>
+
+  <!-- Yükleniyor durumu -->
+  <div id="matrix-loading" class="matrix-loading">
+    <div class="spinner"></div>
+    <div>Depo stokları yükleniyor...</div>
+  </div>
+  
+  <!-- Hata durumu -->
+  <div id="matrix-error" class="matrix-error" style="display: none;">
+    <div>⚠️ Stok bilgileri yüklenemedi</div>
+  </div>
+  
+  <!-- Ana içerik -->
+  <div id="matrix-content" style="display: none;">
+    <!-- Renk Seçici (opsiyonel, birden fazla renk varsa göster) -->
+    <div id="color-selector" class="color-selector-row" style="display: none;"></div>
+    
+    <!-- Beden/Depo Matrisi -->
+    <div class="matrix-container">
+      <table class="warehouse-matrix-table">
+        <thead class="matrix-header" id="matrix-header">
+          <tr>
+            <th>SIZES</th>
+            <!-- Dinamik beden sütunları -->
+          </tr>
+        </thead>
+        <tbody id="matrix-body">
+          <!-- Dinamik depo satırları -->
+        </tbody>
+      </table>
+    </div>
+    
+    <!-- Sipariş Özeti -->
+    <div class="order-summary" id="order-summary">
+      <div class="order-summary-title">Sipariş Özeti</div>
+      <div class="summary-items" id="summary-items">
+        <div class="no-selection">Henüz ürün seçilmedi</div>
+      </div>
+      <div class="summary-total" id="summary-total" style="display: none;">
+        <span class="summary-total-label">Toplam:</span>
+        <span class="summary-total-value" id="total-value">0 adet - $0.00</span>
+      </div>
+    </div>
+    
+    <!-- Sepete Ekle -->
+    <div class="add-to-cart-section">
+      <button class="wishlist-btn" type="button" title="Favorilere Ekle">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+        </svg>
+      </button>
+      <button id="matrix-add-to-cart" class="matrix-add-to-cart-btn" type="button" disabled>
+        ADD TO CART
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  'use strict';
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // KONFİGÜRASYON
+  // ═══════════════════════════════════════════════════════════════════════════
+  const CONFIG = {
+    apiBaseUrl: 'https://copies-depends-acre-eric.trycloudflare.com',
+    productHandle: '{{ product.handle }}',
+    productId: {{ product.id }},
+    productTitle: '{{ product.title | escape }}',
+    currentVariantId: {{ product.selected_or_first_available_variant.id }},
+    currentVariantSku: '{{ product.selected_or_first_available_variant.sku | escape }}',
+    styleId: '{{ product.metafields.ssactivewear.style_id | default: "" }}'
+  };
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // STATE
+  // ═══════════════════════════════════════════════════════════════════════════
+  let stockData = null;
+  let selectedColor = null;
+  let orderState = {}; // { "warehouseCode-size": quantity }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // DOM ELEMENTLERİ
+  // ═══════════════════════════════════════════════════════════════════════════
+  const elements = {
+    loading: document.getElementById('matrix-loading'),
+    error: document.getElementById('matrix-error'),
+    content: document.getElementById('matrix-content'),
+    colorSelector: document.getElementById('color-selector'),
+    matrixHeader: document.getElementById('matrix-header'),
+    matrixBody: document.getElementById('matrix-body'),
+    summaryItems: document.getElementById('summary-items'),
+    summaryTotal: document.getElementById('summary-total'),
+    totalValue: document.getElementById('total-value'),
+    addToCartBtn: document.getElementById('matrix-add-to-cart')
+  };
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // API - STOK VERİSİ ÇEK
+  // ═══════════════════════════════════════════════════════════════════════════
+  async function fetchStockData() {
+    try {
+      showLoading();
+      
+      // SKU'dan style ID çıkar veya metafield kullan
+      let styleId = CONFIG.styleId;
+      if (!styleId && CONFIG.currentVariantSku) {
+        // SKU formatı genellikle: STYLEID-COLOR-SIZE veya benzeri
+        // Sayısal olmayan karakterleri temizle
+        const skuParts = CONFIG.currentVariantSku.split(/[-_]/);
+        if (skuParts.length > 0) {
+          styleId = skuParts[0];
+        }
+      }
+      
+      if (!styleId) {
+        throw new Error('Style ID bulunamadı');
+      }
+      
+      const response = await fetch(`${CONFIG.apiBaseUrl}/api/warehouse-stock/style/${styleId}`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json'
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      if (data.status === 'error') {
+        throw new Error(data.message || 'API hatası');
+      }
+      
+      stockData = processStockData(data);
+      renderMatrix();
+      showContent();
+      
+    } catch (error) {
+      console.error('Stok verisi çekilemedi:', error);
+      showError();
+    }
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // VERİ İŞLEME
+  // ═══════════════════════════════════════════════════════════════════════════
+  function processStockData(data) {
+    // API'den gelen veriyi işle
+    // Format: { skus: { sku: { color_name, size_name, warehouses: [{code, name, qty, price}] } } }
+    
+    const processed = {
+      colors: {},      // { colorName: { sizes: Set, skus: [] } }
+      sizes: new Set(),
+      warehouses: {},  // { code: { name: code, skus: {} } }
+      prices: {},      // { size: price }
+      skuMap: {}       // { "color-size": { sku, price, warehouses } }
+    };
+    
+    const skus = data.skus || data.variants || data;
+    
+    // SKU'ları döngüle
+    Object.entries(skus).forEach(([sku, info]) => {
+      const color = info.color_name || info.color || 'Default';
+      const size = info.size_name || info.size || 'One Size';
+      const warehousesArray = info.warehouses || [];
+      
+      // İlk depodan fiyatı al
+      const price = warehousesArray.length > 0 ? (parseFloat(warehousesArray[0].price) || 0) : 0;
+      
+      // Renkleri topla
+      if (!processed.colors[color]) {
+        processed.colors[color] = { sizes: new Set(), skus: [] };
+      }
+      processed.colors[color].sizes.add(size);
+      processed.colors[color].skus.push(sku);
+      
+      // Bedenleri topla
+      processed.sizes.add(size);
+      
+      // Fiyatları sakla (beden bazında)
+      if (!processed.prices[size] || price > 0) {
+        processed.prices[size] = price;
+      }
+      
+      // SKU map - warehouses'ı object formatına çevir {code: qty}
+      const key = `${color}|||${size}`;
+      const warehousesObj = {};
+      warehousesArray.forEach(wh => {
+        warehousesObj[wh.code] = wh.qty;
+      });
+      processed.skuMap[key] = { sku, price, warehouses: warehousesObj };
+      
+      // Depoları topla
+      warehousesArray.forEach(wh => {
+        const whCode = wh.code;
+        if (!processed.warehouses[whCode]) {
+          processed.warehouses[whCode] = { name: wh.name || getWarehouseName(whCode), skus: {} };
+        }
+        processed.warehouses[whCode].skus[key] = wh.qty;
+      });
+    });
+    
+    // Set'leri Array'e çevir ve sırala
+    processed.sizes = sortSizes(Array.from(processed.sizes));
+    
+    return processed;
+  }
+  
+  function getWarehouseName(code) {
+    // Depo kodlarından isim eşleştirmesi
+    const warehouseNames = {
+      'KS': 'Olathe, Kansas',
+      'TX': 'Fort Worth, Texas',
+      'TX-D': 'Irving (Dallas), Texas',
+      'GA': 'McDonough, Georgia',
+      'NV': 'Reno, Nevada',
+      'IL': 'Lockport, Illinois',
+      'OH': 'West Chester Township, Ohio',
+      'PA': 'Reading, Pennsylvania',
+      'IL-B': 'Bolingbrook, Illinois',
+      'CA': 'Fresno, California',
+      'FL': 'Orlando, Florida',
+      'GA-D': 'Duluth, Georgia',
+      'MA': 'Middleborough, Massachusetts',
+      'PA-L': 'Lewisberry, Pennsylvania',
+      // Daha fazla depo eklenebilir
+    };
+    return warehouseNames[code] || code;
+  }
+  
+  function sortSizes(sizes) {
+    const sizeOrder = ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL', '6XL'];
+    return sizes.sort((a, b) => {
+      const aIdx = sizeOrder.indexOf(a);
+      const bIdx = sizeOrder.indexOf(b);
+      if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
+      if (aIdx !== -1) return -1;
+      if (bIdx !== -1) return 1;
+      return a.localeCompare(b);
+    });
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // RENDER - MATRİX
+  // ═══════════════════════════════════════════════════════════════════════════
+  function renderMatrix() {
+    if (!stockData) return;
+    
+    // Renk seçici
+    const colors = Object.keys(stockData.colors);
+    if (colors.length > 1) {
+      renderColorSelector(colors);
+      selectedColor = colors[0];
+    } else {
+      selectedColor = colors[0] || 'Default';
+      elements.colorSelector.style.display = 'none';
+    }
+    
+    // Matrix header (bedenler)
+    renderMatrixHeader();
+    
+    // Matrix body (depolar)
+    renderMatrixBody();
+  }
+  
+  function renderColorSelector(colors) {
+    elements.colorSelector.style.display = 'flex';
+    elements.colorSelector.innerHTML = colors.map((color, idx) => `
+      <div class="color-option ${idx === 0 ? 'active' : ''}" data-color="${escapeHtml(color)}">
+        <div class="color-swatch" style="background: ${getColorHex(color)};"></div>
+        <div class="color-name">${escapeHtml(color)}</div>
+      </div>
+    `).join('');
+    
+    // Event listeners
+    elements.colorSelector.querySelectorAll('.color-option').forEach(el => {
+      el.addEventListener('click', () => {
+        elements.colorSelector.querySelectorAll('.color-option').forEach(e => e.classList.remove('active'));
+        el.classList.add('active');
+        selectedColor = el.dataset.color;
+        renderMatrixBody();
+        updateOrderSummary();
+      });
+    });
+  }
+  
+  function getColorHex(colorName) {
+    const colorMap = {
+      'White': '#ffffff',
+      'Black': '#000000',
+      'Navy': '#001f3f',
+      'Red': '#dc3545',
+      'Royal': '#4169e1',
+      'Heather Grey': '#9e9e9e',
+      'Sport Grey': '#808080',
+      'Charcoal': '#36454f',
+      // Daha fazla renk eklenebilir
+    };
+    return colorMap[colorName] || '#cccccc';
+  }
+  
+  function renderMatrixHeader() {
+    const sizes = stockData.sizes;
+    const headerRow = elements.matrixHeader.querySelector('tr');
+    
+    headerRow.innerHTML = `
+      <th>SIZES</th>
+      ${sizes.map(size => `
+        <th>
+          <span class="size-name">${escapeHtml(size)}</span>
+          <span class="size-price">$${(stockData.prices[size] || 0).toFixed(2)}</span>
+        </th>
+      `).join('')}
+    `;
+  }
+  
+  function renderMatrixBody() {
+    const sizes = stockData.sizes;
+    const warehouses = Object.entries(stockData.warehouses);
+    
+    elements.matrixBody.innerHTML = warehouses.map(([whCode, whData]) => `
+      <tr class="warehouse-row" data-warehouse="${escapeHtml(whCode)}">
+        <td class="warehouse-name-cell">${escapeHtml(whData.name)}</td>
+        ${sizes.map(size => {
+          const key = `${selectedColor}|||${size}`;
+          const stock = whData.skus[key] || 0;
+          const inputId = `qty-${whCode}-${size}`;
+          const inputKey = `${whCode}-${size}`;
+          
+          let stockClass = 'out-of-stock';
+          if (stock > 100) stockClass = 'in-stock';
+          else if (stock > 0) stockClass = 'low-stock';
+          
+          return `
+            <td class="stock-cell">
+              <span class="stock-qty-label ${stockClass}">Qty: ${stock}</span>
+              <div class="qty-input-wrapper">
+                <input 
+                  type="number" 
+                  class="qty-input" 
+                  id="${inputId}"
+                  data-warehouse="${escapeHtml(whCode)}"
+                  data-size="${escapeHtml(size)}"
+                  data-max="${stock}"
+                  data-price="${stockData.prices[size] || 0}"
+                  min="0" 
+                  max="${stock}"
+                  value="${orderState[inputKey] || 0}"
+                  ${stock === 0 ? 'disabled' : ''}
+                >
+              </div>
+            </td>
+          `;
+        }).join('')}
+      </tr>
+    `).join('');
+    
+    // Input event listeners
+    elements.matrixBody.querySelectorAll('.qty-input').forEach(input => {
+      input.addEventListener('input', handleQuantityChange);
+      input.addEventListener('change', handleQuantityChange);
+    });
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // EVENT HANDLERS
+  // ═══════════════════════════════════════════════════════════════════════════
+  function handleQuantityChange(e) {
+    const input = e.target;
+    const warehouse = input.dataset.warehouse;
+    const size = input.dataset.size;
+    const max = parseInt(input.dataset.max) || 0;
+    let value = parseInt(input.value) || 0;
+    
+    // Limitleri kontrol et
+    if (value < 0) value = 0;
+    if (value > max) value = max;
+    input.value = value;
+    
+    // State güncelle
+    const key = `${warehouse}-${size}`;
+    if (value > 0) {
+      orderState[key] = value;
+      input.classList.add('has-value');
+    } else {
+      delete orderState[key];
+      input.classList.remove('has-value');
+    }
+    
+    updateOrderSummary();
+  }
+  
+  function updateOrderSummary() {
+    const entries = Object.entries(orderState);
+    
+    if (entries.length === 0) {
+      elements.summaryItems.innerHTML = '<div class="no-selection">Henüz ürün seçilmedi</div>';
+      elements.summaryTotal.style.display = 'none';
+      elements.addToCartBtn.disabled = true;
+      return;
+    }
+    
+    let totalQty = 0;
+    let totalPrice = 0;
+    
+    const items = entries.map(([key, qty]) => {
+      const [warehouse, size] = key.split('-');
+      const price = stockData.prices[size] || 0;
+      const itemTotal = qty * price;
+      
+      totalQty += qty;
+      totalPrice += itemTotal;
+      
+      const whName = stockData.warehouses[warehouse]?.name || warehouse;
+      
+      return `
+        <div class="summary-item">
+          <span class="summary-item-details">
+            ${escapeHtml(selectedColor)} / ${escapeHtml(size)} - ${escapeHtml(whName)}
+          </span>
+          <span class="summary-item-qty">${qty} adet</span>
+        </div>
+      `;
+    }).join('');
+    
+    elements.summaryItems.innerHTML = items;
+    elements.totalValue.textContent = `${totalQty} adet - $${totalPrice.toFixed(2)}`;
+    elements.summaryTotal.style.display = 'flex';
+    elements.addToCartBtn.disabled = false;
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SEPETE EKLE
+  // ═══════════════════════════════════════════════════════════════════════════
+  async function addToCart() {
+    if (Object.keys(orderState).length === 0) return;
+    
+    elements.addToCartBtn.disabled = true;
+    elements.addToCartBtn.textContent = 'EKLENİYOR...';
+    
+    try {
+      // Her depo-beden kombinasyonu için sipariş detayları oluştur
+      const warehouseOrders = {};
+      
+      Object.entries(orderState).forEach(([key, qty]) => {
+        const [warehouse, size] = key.split('-');
+        const skuKey = `${selectedColor}|||${size}`;
+        const skuInfo = stockData.skuMap[skuKey];
+        
+        if (!warehouseOrders[warehouse]) {
+          warehouseOrders[warehouse] = [];
+        }
+        
+        warehouseOrders[warehouse].push({
+          size: size,
+          qty: qty,
+          sku: skuInfo?.sku || '',
+          price: skuInfo?.price || 0
+        });
+      });
+      
+      // İlk SKU'yu bul (varsayılan varyant olarak kullan)
+      const firstKey = Object.keys(orderState)[0];
+      const [firstWh, firstSize] = firstKey.split('-');
+      const firstSkuKey = `${selectedColor}|||${firstSize}`;
+      const firstSkuInfo = stockData.skuMap[firstSkuKey];
+      
+      // Toplam miktar
+      const totalQty = Object.values(orderState).reduce((sum, q) => sum + q, 0);
+      
+      // Shopify Cart API
+      const cartPayload = {
+        items: [{
+          id: CONFIG.currentVariantId, // Mevcut varyant ID
+          quantity: totalQty,
+          properties: {
+            '_warehouse_orders': JSON.stringify(warehouseOrders),
+            '_selected_color': selectedColor,
+            '_order_breakdown': Object.entries(orderState)
+              .map(([k, v]) => `${k}: ${v}`)
+              .join(', ')
+          }
+        }]
+      };
+      
+      const response = await fetch('/cart/add.js', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(cartPayload)
+      });
+      
+      if (!response.ok) {
+        throw new Error('Sepete eklenemedi');
+      }
+      
+      // Başarılı
+      elements.addToCartBtn.textContent = '✓ EKLENDİ!';
+      
+      // Sepet sayısını güncelle (tema bağımlı)
+      if (window.refreshCart) window.refreshCart();
+      if (window.Shopify && window.Shopify.onItemAdded) {
+        const data = await response.json();
+        window.Shopify.onItemAdded(data);
+      }
+      
+      // State temizle
+      setTimeout(() => {
+        orderState = {};
+        renderMatrixBody();
+        updateOrderSummary();
+        elements.addToCartBtn.textContent = 'ADD TO CART';
+        elements.addToCartBtn.disabled = true;
+      }, 2000);
+      
+    } catch (error) {
+      console.error('Sepete eklenirken hata:', error);
+      elements.addToCartBtn.textContent = 'HATA!';
+      setTimeout(() => {
+        elements.addToCartBtn.textContent = 'ADD TO CART';
+        elements.addToCartBtn.disabled = false;
+      }, 2000);
+    }
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // YARDIMCI FONKSİYONLAR
+  // ═══════════════════════════════════════════════════════════════════════════
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+  
+  function showLoading() {
+    elements.loading.style.display = 'block';
+    elements.error.style.display = 'none';
+    elements.content.style.display = 'none';
+  }
+  
+  function showError() {
+    elements.loading.style.display = 'none';
+    elements.error.style.display = 'block';
+    elements.content.style.display = 'none';
+  }
+  
+  function showContent() {
+    elements.loading.style.display = 'none';
+    elements.error.style.display = 'none';
+    elements.content.style.display = 'block';
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // BAŞLAT
+  // ═══════════════════════════════════════════════════════════════════════════
+  elements.addToCartBtn.addEventListener('click', addToCart);
+  
+  // Sayfa yüklendiğinde stok verisi çek
+  fetchStockData();
+  
+  // Varyant değişikliğini dinle (tema bağımlı)
+  document.addEventListener('shopify:variant:change', (e) => {
+    if (e.detail && e.detail.variant) {
+      CONFIG.currentVariantId = e.detail.variant.id;
+      CONFIG.currentVariantSku = e.detail.variant.sku;
+      orderState = {};
+      fetchStockData();
+    }
+  });
+  
+})();
+</script>
+

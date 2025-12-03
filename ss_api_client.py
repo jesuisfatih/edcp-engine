@@ -36,8 +36,26 @@ class SSActivewearClient:
         """Make API request with error handling"""
         url = f"{self.BASE_URL}/{endpoint.lstrip('/')}"
         
+        # Track outgoing request
+        try:
+            from app import track_outgoing_request, add_system_log
+            add_system_log('API', f"→ S&S API: GET {endpoint}", 'ss')
+        except:
+            pass
+        
         try:
             response = self.session.get(url, params=params, timeout=120)  # Increased timeout for large requests
+            
+            # Track response
+            try:
+                from app import track_outgoing_request, add_system_log
+                track_outgoing_request('S&S', endpoint, 'GET', response.status_code < 400)
+                if response.status_code < 400:
+                    add_system_log('SUCCESS', f"← S&S API: {response.status_code} - {endpoint}", 'ss')
+                else:
+                    add_system_log('ERROR', f"← S&S API: {response.status_code} - {endpoint}", 'ss')
+            except:
+                pass
             
             # Provide more detailed error messages
             if response.status_code == 403:

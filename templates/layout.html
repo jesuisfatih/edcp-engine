@@ -86,7 +86,11 @@
         .main-content {
             margin-left: var(--sidebar-width);
             padding: 30px;
-            min-height: 100vh;
+            padding-bottom: 100px;
+        }
+        
+        html {
+            scroll-behavior: smooth;
         }
         
         .page-header {
@@ -256,6 +260,16 @@
             <li>
                 <a href="{{ url_for('page_product_search') }}" class="{% if active_page == 'product-search' %}active{% endif %}">
                     <i class="fas fa-search"></i> Ürün Arama
+                </a>
+            </li>
+            <li>
+                <a href="{{ url_for('page_documentation') }}" class="{% if active_page == 'documentation' %}active{% endif %}">
+                    <i class="fas fa-book"></i> Dokümantasyon
+                </a>
+            </li>
+            <li>
+                <a href="{{ url_for('page_system_monitor') }}" class="{% if active_page == 'system-monitor' %}active{% endif %}">
+                    <i class="fas fa-terminal"></i> Sistem İzleme
                 </a>
             </li>
         </ul>

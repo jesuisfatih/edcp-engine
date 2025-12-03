@@ -28,11 +28,12 @@ class SyncOrchestrator:
     Coordinates all layers to sync S&S data to Shopify
     """
     
-    def __init__(self, sync_id: str, shopify_gateway: ShopifyGateway, log_callback=None, sync_options=None):
+    def __init__(self, sync_id: str, shopify_gateway: ShopifyGateway, log_callback=None, sync_options=None, parent_sync_manager=None):
         self.sync_id = sync_id
         self.gateway = shopify_gateway
         self.reconciler = Reconciler(shopify_gateway)
         self.sync_options = sync_options or {}
+        self.parent = parent_sync_manager  # Reference to sync_manager for real-time updates
         
         # Extract arbitraj settings and pass to StyleBuilder
         arbitraj_settings = self.sync_options.get('arbitraj_settings')
@@ -49,7 +50,8 @@ class SyncOrchestrator:
             'products_created': 0,
             'products_updated': 0,
             'variants_created': 0,
-            'errors': 0
+            'errors': 0,
+            'total_styles': 0  # Total styles to process
         }
     
     def _log(self, level: str, message: str, data: Dict = None):
@@ -74,18 +76,55 @@ class SyncOrchestrator:
             self._log('warning', 'No styles found in cache')
             return self.stats
         
+        self.stats['total_styles'] = len(styles)
         self._log('info', f'Found {len(styles)} unique styles')
         
+        # Update parent sync_manager with total
+        self._update_parent_stats(total=len(styles))
+        
         # Process each style
-        for style in styles:
+        for idx, style in enumerate(styles):
             try:
+                # Update current product in parent
+                self._update_parent_current(style, idx, len(styles))
+                
                 self._sync_single_style(style)
+                
+                # Update parent stats in real-time
+                self._update_parent_stats()
             except Exception as e:
                 self._log('error', f'Failed to sync style {style.style_id}: {e}')
                 self.stats['errors'] += 1
+                self._update_parent_stats()
         
         self._log('success', f'✅ Sync complete: {self.stats}')
         return self.stats
+    
+    def _update_parent_stats(self, total=None):
+        """Update parent sync_manager stats in real-time"""
+        if self.parent:
+            self.parent.stats['created'] = self.stats['products_created']
+            self.parent.stats['updated'] = self.stats['products_updated']
+            self.parent.stats['errors'] = self.stats['errors']
+            if total:
+                self.parent.stats['total'] = total
+            # Update progress percentage
+            if self.stats['total_styles'] > 0:
+                self.parent.progress = int((self.stats['styles_processed'] / self.stats['total_styles']) * 100)
+            self.parent.current_index = self.stats['styles_processed']
+    
+    def _update_parent_current(self, style: Style, index: int, total: int):
+        """Update current product info in parent sync_manager"""
+        if self.parent:
+            self.parent.current_product = {
+                'sku': style.style_id,
+                'styleName': style.name,
+                'brandName': style.brand,
+                'title': f"{style.brand} {style.name}",
+                'index': index,
+                'total': total
+            }
+            self.parent.current_index = index
     
     def _sync_single_style(self, style: Style):
         """
@@ -97,10 +136,13 @@ class SyncOrchestrator:
         self._log('info', f'📋 Processing Style {style.style_id}: {style.brand} {style.name}')
         self._log('info', f'   Variants: {style.variant_count}, Requires split: {style.requires_split}')
         
-        # Change detection
-        if not self.reconciler.should_sync_style(style):
-            self.stats['styles_unchanged'] += 1
-            return  # Skip unchanged
+        # Change detection (skip if force_sync is enabled)
+        if not self.sync_options.get('force_sync', False):
+            if not self.reconciler.should_sync_style(style):
+                self.stats['styles_unchanged'] += 1
+                return  # Skip unchanged
+        else:
+            print(f"  Force sync enabled - syncing style {style.style_id} regardless of changes")
         
         # Build desired state (handles 2048-variant split if needed - rare)
         desired = self.reconciler.build_desired_state(style)

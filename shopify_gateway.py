@@ -41,12 +41,36 @@ class ShopifyGateway:
         if variables:
             payload['variables'] = variables
         
+        # Extract operation name for logging
+        op_name = 'query'
+        if 'mutation' in query[:100]:
+            op_name = query.split('{')[0].strip().replace('mutation', '').strip()[:30] or 'mutation'
+        
+        # Track outgoing request
+        try:
+            from app import track_outgoing_request, add_system_log
+            add_system_log('API', f"→ Shopify GraphQL: {op_name}", 'shopify')
+        except:
+            pass
+        
         response = requests.post(
             self.graphql_url,
             headers=self.headers,
             json=payload,
             timeout=120
         )
+        
+        # Track response
+        try:
+            from app import track_outgoing_request, add_system_log
+            success = response.status_code == 200
+            track_outgoing_request('Shopify', op_name, 'POST', success)
+            if success:
+                add_system_log('SUCCESS', f"← Shopify GraphQL: 200 - {op_name}", 'shopify')
+            else:
+                add_system_log('ERROR', f"← Shopify GraphQL: {response.status_code} - {op_name}", 'shopify')
+        except:
+            pass
         
         if response.status_code != 200:
             raise Exception(f"GraphQL HTTP {response.status_code}: {response.text[:500]}")
@@ -55,6 +79,11 @@ class ShopifyGateway:
         
         if 'errors' in result:
             error_msgs = [e.get('message', str(e)) for e in result['errors']]
+            try:
+                from app import add_system_log
+                add_system_log('ERROR', f"GraphQL hatası: {error_msgs[0][:100]}", 'shopify')
+            except:
+                pass
             raise Exception(f"GraphQL errors: {'; '.join(error_msgs)}")
         
         return result

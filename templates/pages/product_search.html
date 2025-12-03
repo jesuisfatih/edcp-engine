@@ -651,6 +651,7 @@ async function openImportModal(styleId, productName) {
 
 function renderImportWarehouses(warehouses, productName) {
     const body = document.getElementById('importModalBody');
+    const footer = document.getElementById('importModalFooter');
     
     // Sort by stock
     warehouses.sort((a, b) => (b.total_stock || 0) - (a.total_stock || 0));
@@ -660,55 +661,52 @@ function renderImportWarehouses(warehouses, productName) {
             <strong>Ürün:</strong> ${productName}
         </div>
         <div class="mb-3">
-            <label class="form-label fw-bold">📍 Depo Seçin:</label>
+            <label class="form-label fw-bold">📍 Depo Seçin (tıklayınca aktarım başlar):</label>
             <div class="list-group">
                 ${warehouses.map((wh, idx) => `
-                    <label class="list-group-item list-group-item-action d-flex justify-content-between align-items-center ${idx === 0 ? 'active' : ''}" 
-                           style="cursor: pointer;">
+                    <div class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" 
+                         style="cursor: pointer;"
+                         onclick="startImportWithWarehouse('${wh.code}')">
                         <div>
-                            <input type="radio" name="importWarehouse" value="${wh.code}" 
-                                   ${idx === 0 ? 'checked' : ''} class="form-check-input me-2"
-                                   onchange="selectImportWarehouse('${wh.code}')">
                             <strong>${wh.name || wh.code}</strong>
-                            <small class="text-${idx === 0 ? 'white' : 'muted'}">(${wh.code})</small>
+                            <small class="text-muted">(${wh.code})</small>
                         </div>
                         <div>
                             ${idx === 0 ? '<span class="badge bg-warning text-dark me-2">EN YÜKSEK</span>' : ''}
-                            <span class="badge ${idx === 0 ? 'bg-light text-dark' : 'bg-success'}">${(wh.total_stock || 0).toLocaleString()} adet</span>
+                            <span class="badge bg-success">${(wh.total_stock || 0).toLocaleString()} adet</span>
                         </div>
-                    </label>
+                    </div>
                 `).join('')}
             </div>
         </div>
-        <div class="alert alert-info mb-0">
-            <i class="fas fa-info-circle"></i> Seçilen depodan stok bilgisi ile ürün Shopify'a aktarılacaktır.
-        </div>
     `;
     
-    // Select first warehouse by default
-    if (warehouses.length > 0) {
-        selectedImportWarehouse = warehouses[0].code;
-    }
+    // Footer'ı gizle - depo seçince direkt aktarım başlayacak
+    footer.style.display = 'none';
 }
 
-function selectImportWarehouse(code) {
-    selectedImportWarehouse = code;
+async function startImportWithWarehouse(warehouseCode) {
+    selectedImportWarehouse = warehouseCode;
     
-    // Update UI
-    document.querySelectorAll('#importModalBody .list-group-item').forEach(item => {
-        item.classList.remove('active');
-    });
-    const selected = document.querySelector(`input[value="${code}"]`);
-    if (selected) {
-        selected.closest('.list-group-item').classList.add('active');
-    }
+    // Direkt aktarımı başlat
+    await confirmImport();
 }
 
 async function confirmImport() {
     if (!importStyleId || !selectedImportWarehouse) {
-        alert('Lütfen bir depo seçin');
         return;
     }
+    
+    // Loading göster
+    document.getElementById('importModalBody').innerHTML = `
+        <div class="text-center py-4">
+            <div class="spinner-border text-success mb-3" style="width: 3rem; height: 3rem;"></div>
+            <h5>Shopify'a Aktarılıyor...</h5>
+            <p class="text-muted">Depo: <strong>${selectedImportWarehouse}</strong></p>
+            <p class="text-muted small">Bu işlem birkaç saniye sürebilir</p>
+        </div>
+    `;
+    document.getElementById('importModalFooter').style.display = 'none';
     
     const btn = document.getElementById('confirmImportBtn');
     const originalText = btn.innerHTML;
@@ -747,14 +745,30 @@ async function confirmImport() {
                 <button type="button" class="btn btn-success" data-bs-dismiss="modal">Tamam</button>
             `;
         } else {
-            alert('Aktarım hatası: ' + (data.message || 'Bilinmeyen hata'));
-            btn.disabled = false;
-            btn.innerHTML = originalText;
+            // Modal içinde hata göster
+            document.getElementById('importModalBody').innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>Aktarım Hatası:</strong> ${data.message || 'Bilinmeyen hata'}
+                </div>
+            `;
+            document.getElementById('importModalFooter').innerHTML = `
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Kapat</button>
+                <button type="button" class="btn btn-primary" onclick="confirmImport()">Tekrar Dene</button>
+            `;
         }
     } catch (error) {
-        alert('Hata: ' + error.message);
-        btn.disabled = false;
-        btn.innerHTML = originalText;
+        // Modal içinde hata göster
+        document.getElementById('importModalBody').innerHTML = `
+            <div class="alert alert-danger">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                <strong>Bağlantı Hatası:</strong> ${error.message}
+            </div>
+        `;
+        document.getElementById('importModalFooter').innerHTML = `
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Kapat</button>
+            <button type="button" class="btn btn-primary" onclick="confirmImport()">Tekrar Dene</button>
+        `;
     }
 }
 </script>

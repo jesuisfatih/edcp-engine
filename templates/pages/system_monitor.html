@@ -1,0 +1,993 @@
+{% extends "layout.html" %}
+
+{% block title %}Sistem İzleme - EDCP{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Override layout for this page */
+    .main-content {
+        height: auto !important;
+        min-height: 100vh;
+        padding-bottom: 50px !important;
+    }
+    
+    .monitor-container {
+        background: #0d1117;
+        border-radius: 12px;
+        padding: 0;
+        overflow: hidden;
+        margin-bottom: 20px;
+    }
+    
+    .monitor-header {
+        background: linear-gradient(135deg, #161b22 0%, #21262d 100%);
+        padding: 15px 20px;
+        border-bottom: 1px solid #30363d;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .monitor-title {
+        color: #58a6ff;
+        font-size: 14px;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    
+    .monitor-title .dot {
+        width: 8px;
+        height: 8px;
+        background: #3fb950;
+        border-radius: 50%;
+        animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+    }
+    
+    .terminal-body {
+        height: 400px;
+        overflow-y: auto;
+        padding: 15px;
+        font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+        font-size: 12px;
+        line-height: 1.6;
+        background: #0d1117;
+        border: 1px solid #30363d;
+        border-top: none;
+        border-radius: 0 0 12px 12px;
+    }
+    
+    .terminal-body:empty::before {
+        content: 'Henüz log yok...';
+        color: #6e7681;
+        font-style: italic;
+    }
+    
+    .terminal-body::-webkit-scrollbar {
+        width: 8px;
+    }
+    
+    .terminal-body::-webkit-scrollbar-track {
+        background: #161b22;
+    }
+    
+    .terminal-body::-webkit-scrollbar-thumb {
+        background: #30363d;
+        border-radius: 4px;
+    }
+    
+    .log-entry {
+        margin-bottom: 4px;
+        display: flex;
+        gap: 10px;
+    }
+    
+    .log-time {
+        color: #6e7681;
+        min-width: 85px;
+    }
+    
+    .log-type {
+        min-width: 70px;
+        font-weight: 600;
+    }
+    
+    .log-type.info { color: #58a6ff; }
+    .log-type.success { color: #3fb950; }
+    .log-type.warning { color: #d29922; }
+    .log-type.error { color: #f85149; }
+    .log-type.api { color: #a371f7; }
+    .log-type.cache { color: #f778ba; }
+    .log-type.sync { color: #79c0ff; }
+    .log-type.scheduler { color: #ffa657; }
+    
+    .log-message {
+        color: #c9d1d9;
+        flex: 1;
+        word-break: break-word;
+    }
+    
+    .log-message .highlight {
+        color: #ffa657;
+        font-weight: 500;
+    }
+    
+    .log-message .number {
+        color: #79c0ff;
+    }
+    
+    .log-message .path {
+        color: #a5d6ff;
+    }
+    
+    /* Stats Cards */
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin-bottom: 20px;
+    }
+    
+    .stat-card {
+        background: linear-gradient(135deg, #161b22 0%, #0d1117 100%);
+        border: 1px solid #30363d;
+        border-radius: 10px;
+        padding: 20px;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .stat-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 4px;
+        height: 100%;
+    }
+    
+    .stat-card.primary::before { background: #58a6ff; }
+    .stat-card.success::before { background: #3fb950; }
+    .stat-card.warning::before { background: #d29922; }
+    .stat-card.danger::before { background: #f85149; }
+    .stat-card.purple::before { background: #a371f7; }
+    .stat-card.pink::before { background: #f778ba; }
+    
+    .stat-label {
+        color: #8b949e;
+        font-size: 12px;
+        margin-bottom: 8px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    .stat-value {
+        color: #f0f6fc;
+        font-size: 28px;
+        font-weight: 700;
+        font-family: 'JetBrains Mono', monospace;
+    }
+    
+    .stat-sub {
+        color: #6e7681;
+        font-size: 11px;
+        margin-top: 5px;
+    }
+    
+    /* Timer Cards */
+    .timer-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 15px;
+        margin-bottom: 20px;
+    }
+    
+    .timer-card {
+        background: #161b22;
+        border: 1px solid #30363d;
+        border-radius: 10px;
+        padding: 20px;
+    }
+    
+    .timer-title {
+        color: #8b949e;
+        font-size: 12px;
+        margin-bottom: 10px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    
+    .timer-value {
+        color: #58a6ff;
+        font-size: 24px;
+        font-weight: 700;
+        font-family: 'JetBrains Mono', monospace;
+    }
+    
+    .timer-progress {
+        height: 4px;
+        background: #21262d;
+        border-radius: 2px;
+        margin-top: 10px;
+        overflow: hidden;
+    }
+    
+    .timer-progress-bar {
+        height: 100%;
+        background: linear-gradient(90deg, #58a6ff, #a371f7);
+        border-radius: 2px;
+        transition: width 1s linear;
+    }
+    
+    /* API Activity */
+    .api-activity {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+        margin-bottom: 20px;
+    }
+    
+    @media (max-width: 992px) {
+        .api-activity {
+            grid-template-columns: 1fr;
+        }
+    }
+    
+    .api-card {
+        background: #161b22;
+        border: 1px solid #30363d;
+        border-radius: 10px;
+        padding: 15px;
+        min-height: 200px;
+    }
+    
+    .api-card-title {
+        color: #8b949e;
+        font-size: 12px;
+        margin-bottom: 10px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    
+    .api-list {
+        max-height: 150px;
+        overflow-y: auto;
+    }
+    
+    .api-item {
+        padding: 8px 10px;
+        background: #0d1117;
+        border-radius: 6px;
+        margin-bottom: 5px;
+        font-size: 11px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .api-method {
+        font-weight: 600;
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-size: 10px;
+    }
+    
+    .api-method.get { background: #238636; color: #fff; }
+    .api-method.post { background: #1f6feb; color: #fff; }
+    .api-method.put { background: #9e6a03; color: #fff; }
+    .api-method.delete { background: #da3633; color: #fff; }
+    
+    .api-path {
+        color: #c9d1d9;
+        flex: 1;
+        margin-left: 10px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    
+    .api-time {
+        color: #6e7681;
+        font-size: 10px;
+    }
+    
+    .api-status {
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-size: 10px;
+        font-weight: 600;
+    }
+    
+    .api-status.success { background: #238636; color: #fff; }
+    .api-status.error { background: #da3633; color: #fff; }
+    
+    /* Connection Status */
+    .connection-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin-bottom: 20px;
+    }
+    
+    .connection-card {
+        background: #161b22;
+        border: 1px solid #30363d;
+        border-radius: 10px;
+        padding: 15px;
+        display: flex;
+        align-items: center;
+        gap: 15px;
+    }
+    
+    .connection-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 18px;
+    }
+    
+    .connection-icon.online { background: rgba(63, 185, 80, 0.2); color: #3fb950; }
+    .connection-icon.offline { background: rgba(248, 81, 73, 0.2); color: #f85149; }
+    
+    .connection-info {
+        flex: 1;
+    }
+    
+    .connection-name {
+        color: #f0f6fc;
+        font-weight: 600;
+        font-size: 14px;
+    }
+    
+    .connection-status {
+        color: #8b949e;
+        font-size: 12px;
+    }
+    
+    /* Control Buttons */
+    .control-buttons {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+    
+    .control-btn {
+        padding: 8px 16px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 600;
+        border: 1px solid #30363d;
+        background: #21262d;
+        color: #c9d1d9;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    
+    .control-btn:hover {
+        background: #30363d;
+        border-color: #8b949e;
+    }
+    
+    .control-btn.primary {
+        background: #238636;
+        border-color: #238636;
+        color: #fff;
+    }
+    
+    .control-btn.danger {
+        background: #da3633;
+        border-color: #da3633;
+        color: #fff;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2><i class="fas fa-terminal me-2"></i>Sistem İzleme</h2>
+            <p class="text-muted mb-0">Canlı sistem aktivitesi ve performans metrikleri</p>
+        </div>
+        <div class="control-buttons">
+            <button class="control-btn" onclick="clearLogs()">
+                <i class="fas fa-trash"></i> Logları Temizle
+            </button>
+            <button class="control-btn" onclick="toggleAutoScroll()">
+                <i class="fas fa-scroll"></i> <span id="autoScrollText">Auto Scroll: ON</span>
+            </button>
+            <button class="control-btn primary" onclick="manualRefresh()">
+                <i class="fas fa-sync"></i> Yenile
+            </button>
+        </div>
+    </div>
+
+    <!-- Connection Status -->
+    <div class="connection-grid">
+        <div class="connection-card">
+            <div class="connection-icon" id="ssApiStatus">
+                <i class="fas fa-database"></i>
+            </div>
+            <div class="connection-info">
+                <div class="connection-name">S&S Activewear API</div>
+                <div class="connection-status" id="ssApiStatusText">Kontrol ediliyor...</div>
+            </div>
+        </div>
+        <div class="connection-card">
+            <div class="connection-icon" id="shopifyApiStatus">
+                <i class="fab fa-shopify"></i>
+            </div>
+            <div class="connection-info">
+                <div class="connection-name">Shopify API</div>
+                <div class="connection-status" id="shopifyApiStatusText">Kontrol ediliyor...</div>
+            </div>
+        </div>
+        <div class="connection-card">
+            <div class="connection-icon" id="dbStatus">
+                <i class="fas fa-server"></i>
+            </div>
+            <div class="connection-info">
+                <div class="connection-name">Veritabanı</div>
+                <div class="connection-status" id="dbStatusText">Kontrol ediliyor...</div>
+            </div>
+        </div>
+        <div class="connection-card">
+            <div class="connection-icon" id="schedulerStatus">
+                <i class="fas fa-clock"></i>
+            </div>
+            <div class="connection-info">
+                <div class="connection-name">Scheduler</div>
+                <div class="connection-status" id="schedulerStatusText">Kontrol ediliyor...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Stats Grid -->
+    <div class="stats-grid">
+        <div class="stat-card primary">
+            <div class="stat-label">Toplam API İsteği</div>
+            <div class="stat-value" id="totalRequests">0</div>
+            <div class="stat-sub">Son 1 saat</div>
+        </div>
+        <div class="stat-card success">
+            <div class="stat-label">Başarılı İşlem</div>
+            <div class="stat-value" id="successCount">0</div>
+            <div class="stat-sub">%<span id="successRate">0</span> başarı oranı</div>
+        </div>
+        <div class="stat-card danger">
+            <div class="stat-label">Hata Sayısı</div>
+            <div class="stat-value" id="errorCount">0</div>
+            <div class="stat-sub">Son 1 saat</div>
+        </div>
+        <div class="stat-card purple">
+            <div class="stat-label">Cache SKU</div>
+            <div class="stat-value" id="cachedSkus">0</div>
+            <div class="stat-sub">Önbellekteki SKU sayısı</div>
+        </div>
+        <div class="stat-card pink">
+            <div class="stat-label">Aktif Sync</div>
+            <div class="stat-value" id="activeSyncs">0</div>
+            <div class="stat-sub">Devam eden senkronizasyon</div>
+        </div>
+        <div class="stat-card warning">
+            <div class="stat-label">Kuyruk</div>
+            <div class="stat-value" id="queueSize">0</div>
+            <div class="stat-sub">Bekleyen işlem</div>
+        </div>
+    </div>
+    
+    <!-- Cache Performance Stats -->
+    <div class="stats-grid" style="margin-top: 20px;">
+        <div class="stat-card success">
+            <div class="stat-label">Cache Hit Rate</div>
+            <div class="stat-value" id="cacheHitRate">0%</div>
+            <div class="stat-sub">Önbellek başarı oranı</div>
+        </div>
+        <div class="stat-card primary">
+            <div class="stat-label">Memory Hits</div>
+            <div class="stat-value" id="memoryHits">0</div>
+            <div class="stat-sub">In-memory önbellek (< 1ms)</div>
+        </div>
+        <div class="stat-card purple">
+            <div class="stat-label">SQLite Hits</div>
+            <div class="stat-value" id="sqliteHits">0</div>
+            <div class="stat-sub">SQLite önbellek (< 50ms)</div>
+        </div>
+        <div class="stat-card danger">
+            <div class="stat-label">API Calls</div>
+            <div class="stat-value" id="apiCalls">0</div>
+            <div class="stat-sub">S&S API (yavaş)</div>
+        </div>
+        <div class="stat-card warning">
+            <div class="stat-label">Ortalama Yanıt</div>
+            <div class="stat-value" id="avgResponseMs">0ms</div>
+            <div class="stat-sub">Cache yanıt süresi</div>
+        </div>
+        <div class="stat-card pink">
+            <div class="stat-label">Toplam Sorgu</div>
+            <div class="stat-value" id="totalCacheQueries">0</div>
+            <div class="stat-sub">Cache sorgu sayısı</div>
+        </div>
+    </div>
+
+    <!-- Timers -->
+    <div class="timer-grid">
+        <div class="timer-card">
+            <div class="timer-title">
+                <i class="fas fa-sync-alt"></i> Sonraki SKU Cache Güncellemesi
+            </div>
+            <div class="timer-value" id="nextCacheUpdate">--:--:--</div>
+            <div class="timer-progress">
+                <div class="timer-progress-bar" id="cacheProgressBar" style="width: 0%"></div>
+            </div>
+        </div>
+        <div class="timer-card">
+            <div class="timer-title">
+                <i class="fas fa-clock"></i> Sunucu Uptime
+            </div>
+            <div class="timer-value" id="serverUptime">--:--:--</div>
+            <div class="timer-progress">
+                <div class="timer-progress-bar" style="width: 100%; background: #3fb950;"></div>
+            </div>
+        </div>
+        <div class="timer-card">
+            <div class="timer-title">
+                <i class="fas fa-database"></i> Son Veritabanı Sorgusu
+            </div>
+            <div class="timer-value" id="lastDbQuery">--</div>
+            <div class="timer-progress">
+                <div class="timer-progress-bar" id="dbProgressBar" style="width: 100%;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- API Activity -->
+    <div class="api-activity">
+        <div class="api-card">
+            <div class="api-card-title">
+                <i class="fas fa-arrow-down" style="color: #3fb950;"></i> Gelen İstekler (Son 20)
+            </div>
+            <div class="api-list" id="incomingRequests">
+                <div class="api-item">
+                    <span style="color: #6e7681;">Bekleniyor...</span>
+                </div>
+            </div>
+        </div>
+        <div class="api-card">
+            <div class="api-card-title">
+                <i class="fas fa-arrow-up" style="color: #58a6ff;"></i> Giden İstekler (Son 20)
+            </div>
+            <div class="api-list" id="outgoingRequests">
+                <div class="api-item">
+                    <span style="color: #6e7681;">Bekleniyor...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Terminal -->
+    <div class="monitor-container">
+        <div class="monitor-header">
+            <div class="monitor-title">
+                <div class="dot"></div>
+                SYSTEM LOGS - Canlı İzleme
+            </div>
+            <div style="color: #6e7681; font-size: 12px;">
+                <span id="logCount">0</span> kayıt | Son güncelleme: <span id="lastUpdate">--:--:--</span>
+            </div>
+        </div>
+        <div class="terminal-body" id="terminalBody">
+            <div class="log-entry">
+                <span class="log-time">--:--:--</span>
+                <span class="log-type info">INFO</span>
+                <span class="log-message">Sistem izleme başlatılıyor...</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Secondary Terminals -->
+    <div class="row mt-4 g-4">
+        <div class="col-lg-6">
+            <div class="monitor-container" style="margin-bottom: 0;">
+                <div class="monitor-header">
+                    <div class="monitor-title">
+                        <div class="dot" style="background: #a371f7;"></div>
+                        S&S API İşlemleri
+                    </div>
+                    <span class="badge bg-secondary" id="ssLogCount">0 log</span>
+                </div>
+                <div class="terminal-body" id="ssApiTerminal" style="height: 220px;">
+                    <div class="log-entry" style="color: #6e7681; font-style: italic;">
+                        S&S API işlemleri burada görünecek...
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="monitor-container" style="margin-bottom: 0;">
+                <div class="monitor-header">
+                    <div class="monitor-title">
+                        <div class="dot" style="background: #3fb950;"></div>
+                        Shopify API İşlemleri
+                    </div>
+                    <span class="badge bg-secondary" id="shopifyLogCount">0 log</span>
+                </div>
+                <div class="terminal-body" id="shopifyApiTerminal" style="height: 220px;">
+                    <div class="log-entry" style="color: #6e7681; font-style: italic;">
+                        Shopify API işlemleri burada görünecek...
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mt-4 g-4 mb-5">
+        <div class="col-lg-6">
+            <div class="monitor-container" style="margin-bottom: 0;">
+                <div class="monitor-header">
+                    <div class="monitor-title">
+                        <div class="dot" style="background: #f778ba;"></div>
+                        Cache İşlemleri
+                    </div>
+                    <span class="badge bg-secondary" id="cacheLogCount">0 log</span>
+                </div>
+                <div class="terminal-body" id="cacheTerminal" style="height: 220px;">
+                    <div class="log-entry" style="color: #6e7681; font-style: italic;">
+                        Cache işlemleri burada görünecek...
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="monitor-container" style="margin-bottom: 0;">
+                <div class="monitor-header">
+                    <div class="monitor-title">
+                        <div class="dot" style="background: #ffa657;"></div>
+                        Scheduler İşlemleri
+                    </div>
+                    <span class="badge bg-secondary" id="schedulerLogCount">0 log</span>
+                </div>
+                <div class="terminal-body" id="schedulerTerminal" style="height: 220px;">
+                    <div class="log-entry" style="color: #6e7681; font-style: italic;">
+                        Scheduler işlemleri burada görünecek...
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let autoScroll = true;
+let logs = [];
+let ssApiLogs = [];
+let shopifyApiLogs = [];
+let cacheLogs = [];
+let schedulerLogs = [];
+let incomingRequests = [];
+let outgoingRequests = [];
+let stats = {
+    totalRequests: 0,
+    successCount: 0,
+    errorCount: 0,
+    cachedSkus: 0,
+    activeSyncs: 0,
+    queueSize: 0
+};
+
+// Polling interval
+let pollInterval = null;
+const POLL_RATE = 2000; // 2 seconds
+
+// Format time
+function formatTime(date) {
+    return date.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+// Add log entry
+function addLog(type, message, terminal = 'main') {
+    const entry = {
+        time: formatTime(new Date()),
+        type: type,
+        message: message
+    };
+    
+    let targetLogs, targetElement;
+    
+    switch(terminal) {
+        case 'ss':
+            ssApiLogs.unshift(entry);
+            if (ssApiLogs.length > 100) ssApiLogs.pop();
+            targetElement = document.getElementById('ssApiTerminal');
+            targetLogs = ssApiLogs;
+            break;
+        case 'shopify':
+            shopifyApiLogs.unshift(entry);
+            if (shopifyApiLogs.length > 100) shopifyApiLogs.pop();
+            targetElement = document.getElementById('shopifyApiTerminal');
+            targetLogs = shopifyApiLogs;
+            break;
+        case 'cache':
+            cacheLogs.unshift(entry);
+            if (cacheLogs.length > 100) cacheLogs.pop();
+            targetElement = document.getElementById('cacheTerminal');
+            targetLogs = cacheLogs;
+            break;
+        case 'scheduler':
+            schedulerLogs.unshift(entry);
+            if (schedulerLogs.length > 100) schedulerLogs.pop();
+            targetElement = document.getElementById('schedulerTerminal');
+            targetLogs = schedulerLogs;
+            break;
+        default:
+            logs.unshift(entry);
+            if (logs.length > 500) logs.pop();
+            targetElement = document.getElementById('terminalBody');
+            targetLogs = logs;
+    }
+    
+    renderLogs(targetElement, targetLogs);
+    document.getElementById('logCount').textContent = logs.length;
+    document.getElementById('lastUpdate').textContent = formatTime(new Date());
+}
+
+// Render logs
+function renderLogs(element, logArray) {
+    if (!element) return;
+    
+    if (logArray.length === 0) {
+        element.innerHTML = '<div class="log-entry" style="color: #6e7681; font-style: italic;">Henüz log yok...</div>';
+        return;
+    }
+    
+    element.innerHTML = logArray.map(log => `
+        <div class="log-entry">
+            <span class="log-time">${log.time}</span>
+            <span class="log-type ${log.type.toLowerCase()}">${log.type}</span>
+            <span class="log-message">${log.message}</span>
+        </div>
+    `).join('');
+    
+    if (autoScroll && element.id === 'terminalBody') {
+        element.scrollTop = 0;
+    }
+    
+    // Update log counts
+    document.getElementById('ssLogCount').textContent = ssApiLogs.length + ' log';
+    document.getElementById('shopifyLogCount').textContent = shopifyApiLogs.length + ' log';
+    document.getElementById('cacheLogCount').textContent = cacheLogs.length + ' log';
+    document.getElementById('schedulerLogCount').textContent = schedulerLogs.length + ' log';
+}
+
+// Update incoming requests
+function updateIncomingRequests(requests) {
+    const container = document.getElementById('incomingRequests');
+    if (requests.length === 0) {
+        container.innerHTML = '<div class="api-item"><span style="color: #6e7681;">Henüz istek yok</span></div>';
+        return;
+    }
+    
+    container.innerHTML = requests.slice(0, 20).map(req => `
+        <div class="api-item">
+            <span class="api-method ${req.method.toLowerCase()}">${req.method}</span>
+            <span class="api-path">${req.path}</span>
+            <span class="api-status ${req.status < 400 ? 'success' : 'error'}">${req.status}</span>
+            <span class="api-time">${req.time}</span>
+        </div>
+    `).join('');
+}
+
+// Update outgoing requests
+function updateOutgoingRequests(requests) {
+    const container = document.getElementById('outgoingRequests');
+    if (requests.length === 0) {
+        container.innerHTML = '<div class="api-item"><span style="color: #6e7681;">Henüz istek yok</span></div>';
+        return;
+    }
+    
+    container.innerHTML = requests.slice(0, 20).map(req => `
+        <div class="api-item">
+            <span class="api-method ${req.method.toLowerCase()}">${req.method}</span>
+            <span class="api-path">${req.target}: ${req.endpoint}</span>
+            <span class="api-status ${req.success ? 'success' : 'error'}">${req.success ? 'OK' : 'ERR'}</span>
+            <span class="api-time">${req.time}</span>
+        </div>
+    `).join('');
+}
+
+// Update connection status
+function updateConnectionStatus(id, isOnline, statusText) {
+    const icon = document.getElementById(id);
+    const text = document.getElementById(id + 'Text');
+    
+    icon.className = 'connection-icon ' + (isOnline ? 'online' : 'offline');
+    text.textContent = statusText;
+}
+
+// Update stats
+function updateStats(data) {
+    document.getElementById('totalRequests').textContent = data.total_requests || 0;
+    document.getElementById('successCount').textContent = data.success_count || 0;
+    document.getElementById('errorCount').textContent = data.error_count || 0;
+    document.getElementById('cachedSkus').textContent = (data.cached_skus || 0).toLocaleString();
+    document.getElementById('activeSyncs').textContent = data.active_syncs || 0;
+    document.getElementById('queueSize').textContent = data.queue_size || 0;
+    
+    const total = (data.success_count || 0) + (data.error_count || 0);
+    const rate = total > 0 ? Math.round((data.success_count / total) * 100) : 0;
+    document.getElementById('successRate').textContent = rate;
+}
+
+// Update cache performance stats
+function updateCachePerformance(data) {
+    if (!data) return;
+    document.getElementById('cacheHitRate').textContent = (data.hit_rate || 0) + '%';
+    document.getElementById('memoryHits').textContent = (data.memory_hits || 0).toLocaleString();
+    document.getElementById('sqliteHits').textContent = (data.sqlite_hits || 0).toLocaleString();
+    document.getElementById('apiCalls').textContent = (data.api_calls || 0).toLocaleString();
+    document.getElementById('avgResponseMs').textContent = (data.avg_response_ms || 0).toFixed(1) + 'ms';
+    document.getElementById('totalCacheQueries').textContent = (data.total_queries || 0).toLocaleString();
+}
+
+// Update timers
+function updateTimers(data) {
+    if (data.next_cache_update) {
+        document.getElementById('nextCacheUpdate').textContent = data.next_cache_update;
+        document.getElementById('cacheProgressBar').style.width = (data.cache_progress || 0) + '%';
+    }
+    
+    if (data.server_uptime) {
+        document.getElementById('serverUptime').textContent = data.server_uptime;
+    }
+    
+    if (data.last_db_query) {
+        document.getElementById('lastDbQuery').textContent = data.last_db_query;
+    }
+}
+
+// Fetch system status
+async function fetchSystemStatus() {
+    try {
+        const response = await fetch('/api/system-monitor/status');
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            // Update connections
+            updateConnectionStatus('ssApiStatus', data.connections?.ss_api, data.connections?.ss_api ? 'Bağlı' : 'Bağlantı yok');
+            updateConnectionStatus('shopifyApiStatus', data.connections?.shopify_api, data.connections?.shopify_api ? 'Bağlı' : 'Bağlantı yok');
+            updateConnectionStatus('dbStatus', data.connections?.database, data.connections?.database ? 'Aktif' : 'Hata');
+            updateConnectionStatus('schedulerStatus', data.connections?.scheduler, data.connections?.scheduler ? 'Çalışıyor' : 'Durdu');
+            
+            // Update stats
+            updateStats(data.stats || {});
+            
+            // Update cache performance
+            updateCachePerformance(data.cache_performance || {});
+            
+            // Update timers
+            updateTimers(data.timers || {});
+            
+            // Update categorized logs (logs is now an object, not array)
+            if (data.logs && typeof data.logs === 'object') {
+                // Main logs
+                if (Array.isArray(data.logs.main) && data.logs.main.length > 0) {
+                    logs = data.logs.main;
+                    renderLogs(document.getElementById('terminalBody'), logs);
+                }
+                
+                // S&S API logs
+                if (Array.isArray(data.logs.ss) && data.logs.ss.length > 0) {
+                    ssApiLogs = data.logs.ss;
+                    renderLogs(document.getElementById('ssApiTerminal'), ssApiLogs);
+                }
+                
+                // Shopify logs
+                if (Array.isArray(data.logs.shopify) && data.logs.shopify.length > 0) {
+                    shopifyApiLogs = data.logs.shopify;
+                    renderLogs(document.getElementById('shopifyApiTerminal'), shopifyApiLogs);
+                }
+                
+                // Cache logs
+                if (Array.isArray(data.logs.cache) && data.logs.cache.length > 0) {
+                    cacheLogs = data.logs.cache;
+                    renderLogs(document.getElementById('cacheTerminal'), cacheLogs);
+                }
+                
+                // Scheduler logs
+                if (Array.isArray(data.logs.scheduler) && data.logs.scheduler.length > 0) {
+                    schedulerLogs = data.logs.scheduler;
+                    renderLogs(document.getElementById('schedulerTerminal'), schedulerLogs);
+                }
+            }
+            
+            // Update requests
+            if (data.incoming_requests) {
+                updateIncomingRequests(data.incoming_requests);
+            }
+            if (data.outgoing_requests) {
+                updateOutgoingRequests(data.outgoing_requests);
+            }
+            
+            // Update log count
+            document.getElementById('logCount').textContent = logs.length;
+            document.getElementById('lastUpdate').textContent = formatTime(new Date());
+        }
+    } catch (error) {
+        console.error('Fetch error:', error);
+        addLog('ERROR', `Sistem durumu alınamadı: ${error.message}`);
+    }
+}
+
+// Clear logs
+function clearLogs() {
+    logs = [];
+    ssApiLogs = [];
+    shopifyApiLogs = [];
+    cacheLogs = [];
+    schedulerLogs = [];
+    
+    document.getElementById('terminalBody').innerHTML = '';
+    document.getElementById('ssApiTerminal').innerHTML = '';
+    document.getElementById('shopifyApiTerminal').innerHTML = '';
+    document.getElementById('cacheTerminal').innerHTML = '';
+    document.getElementById('schedulerTerminal').innerHTML = '';
+    
+    addLog('INFO', 'Loglar temizlendi');
+}
+
+// Toggle auto scroll
+function toggleAutoScroll() {
+    autoScroll = !autoScroll;
+    document.getElementById('autoScrollText').textContent = 'Auto Scroll: ' + (autoScroll ? 'ON' : 'OFF');
+}
+
+// Manual refresh
+function manualRefresh() {
+    fetchSystemStatus();
+    addLog('INFO', 'Manuel yenileme yapıldı');
+}
+
+// Start polling
+function startPolling() {
+    addLog('INFO', 'Sistem izleme başlatıldı');
+    addLog('INFO', `Polling aralığı: ${POLL_RATE/1000} saniye`);
+    
+    fetchSystemStatus();
+    pollInterval = setInterval(fetchSystemStatus, POLL_RATE);
+}
+
+// Stop polling
+function stopPolling() {
+    if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+    }
+}
+
+// Initialize
+document.addEventListener('DOMContentLoaded', function() {
+    startPolling();
+});
+
+// Cleanup on page leave
+window.addEventListener('beforeunload', function() {
+    stopPolling();
+});
+</script>
+{% endblock %}
+

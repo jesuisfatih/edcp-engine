@@ -1,0 +1,563 @@
+{% extends "layout.html" %}
+
+{% block title %}Dokümantasyon - EDCP{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Başlık -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2><i class="fas fa-book me-2"></i>Dokümantasyon</h2>
+            <p class="text-muted mb-0">Sistem kullanımı ve Shopify entegrasyonu rehberi</p>
+        </div>
+        <div class="input-group" style="max-width: 300px;">
+            <input type="text" class="form-control" id="docSearch" placeholder="Dokümanlarda ara...">
+            <button class="btn btn-outline-secondary" type="button" onclick="searchDocs()">
+                <i class="fas fa-search"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Sayfa Navigasyonu -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <div class="d-flex flex-wrap gap-2">
+                <button class="btn btn-outline-primary doc-nav-btn active" onclick="showSection('overview')">
+                    <i class="fas fa-home me-1"></i> Genel Bakış
+                </button>
+                <button class="btn btn-outline-primary doc-nav-btn" onclick="showSection('pages')">
+                    <i class="fas fa-file-alt me-1"></i> Sayfa Rehberi
+                </button>
+                <button class="btn btn-outline-primary doc-nav-btn" onclick="showSection('shopify-setup')">
+                    <i class="fab fa-shopify me-1"></i> Shopify Kurulumu
+                </button>
+                <button class="btn btn-outline-primary doc-nav-btn" onclick="showSection('warehouse-matrix')">
+                    <i class="fas fa-warehouse me-1"></i> Depo Matrix Kurulumu
+                </button>
+                <button class="btn btn-outline-primary doc-nav-btn" onclick="showSection('cart-setup')">
+                    <i class="fas fa-shopping-cart me-1"></i> Sepet Ayarları
+                </button>
+                <button class="btn btn-outline-primary doc-nav-btn" onclick="showSection('faq')">
+                    <i class="fas fa-question-circle me-1"></i> SSS
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Doküman İçerikleri -->
+    <div id="doc-content">
+        
+        <!-- GENEL BAKIŞ -->
+        <div id="section-overview" class="doc-section">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0"><i class="fas fa-home me-2"></i>Genel Bakış</h4>
+                </div>
+                <div class="card-body">
+                    <h5>EDCP (Everyday Custom Print) Nedir?</h5>
+                    <p>EDCP, S&S Activewear ürünlerini Shopify mağazanıza aktarmanızı ve yönetmenizi sağlayan güçlü bir entegrasyon platformudur.</p>
+                    
+                    <div class="row mt-4">
+                        <div class="col-md-4">
+                            <div class="card bg-light">
+                                <div class="card-body text-center">
+                                    <i class="fas fa-sync-alt fa-3x text-primary mb-3"></i>
+                                    <h5>Otomatik Senkronizasyon</h5>
+                                    <p class="small">Ürünleri otomatik olarak Shopify'a aktarın ve güncelleyin</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card bg-light">
+                                <div class="card-body text-center">
+                                    <i class="fas fa-warehouse fa-3x text-success mb-3"></i>
+                                    <h5>Çoklu Depo Desteği</h5>
+                                    <p class="small">15+ depodan stok bilgisi ve fiyatlandırma</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card bg-light">
+                                <div class="card-body text-center">
+                                    <i class="fas fa-search fa-3x text-info mb-3"></i>
+                                    <h5>Hızlı Ürün Arama</h5>
+                                    <p class="small">100.000+ ürün arasında anlık arama</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SAYFA REHBERİ -->
+        <div id="section-pages" class="doc-section" style="display: none;">
+            <div class="card">
+                <div class="card-header bg-info text-white">
+                    <h4 class="mb-0"><i class="fas fa-file-alt me-2"></i>Sayfa Rehberi</h4>
+                </div>
+                <div class="card-body">
+                    <div class="accordion" id="pagesAccordion">
+                        
+                        <!-- Dashboard -->
+                        <div class="accordion-item">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#pageDashboard">
+                                    <i class="fas fa-tachometer-alt me-2 text-primary"></i> Dashboard (Kontrol Paneli)
+                                </button>
+                            </h2>
+                            <div id="pageDashboard" class="accordion-collapse collapse show" data-bs-parent="#pagesAccordion">
+                                <div class="accordion-body">
+                                    <p><strong>Amaç:</strong> Sistem durumunu ve özet bilgileri görüntüleme</p>
+                                    <h6>Özellikler:</h6>
+                                    <ul>
+                                        <li>API bağlantı durumları (S&S ve Shopify)</li>
+                                        <li>Son senkronizasyon bilgisi</li>
+                                        <li>Aktarılan ürün sayısı</li>
+                                        <li>Hızlı eylem butonları</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Ayarlar -->
+                        <div class="accordion-item">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#pageSettings">
+                                    <i class="fas fa-cog me-2 text-secondary"></i> API Ayarları
+                                </button>
+                            </h2>
+                            <div id="pageSettings" class="accordion-collapse collapse" data-bs-parent="#pagesAccordion">
+                                <div class="accordion-body">
+                                    <p><strong>Amaç:</strong> S&S Activewear ve Shopify API kimlik bilgilerini yapılandırma</p>
+                                    <h6>Gerekli Bilgiler:</h6>
+                                    <ul>
+                                        <li><strong>S&S Account Number:</strong> S&S hesap numaranız</li>
+                                        <li><strong>S&S API Key:</strong> S&S API anahtarınız</li>
+                                        <li><strong>Shopify Shop Domain:</strong> your-store.myshopify.com</li>
+                                        <li><strong>Shopify Access Token:</strong> Admin API erişim tokeni</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Aktarım Seçenekleri -->
+                        <div class="accordion-item">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#pageSyncOptions">
+                                    <i class="fas fa-filter me-2 text-warning"></i> Aktarım Seçenekleri
+                                </button>
+                            </h2>
+                            <div id="pageSyncOptions" class="accordion-collapse collapse" data-bs-parent="#pagesAccordion">
+                                <div class="accordion-body">
+                                    <p><strong>Amaç:</strong> Hangi ürünlerin aktarılacağını filtreleme</p>
+                                    <h6>Filtreleme Adımları:</h6>
+                                    <ol>
+                                        <li><strong>Kategoriler:</strong> T-Shirt, Polo, Hoodie vb.</li>
+                                        <li><strong>Stiller:</strong> Belirli ürün stilleri</li>
+                                        <li><strong>Markalar:</strong> Gildan, Bella+Canvas, Next Level vb.</li>
+                                        <li><strong>Önizleme & Depo:</strong> Depo seçimi ve fiyat ayarları</li>
+                                    </ol>
+                                    <h6>Arbitraj (Fiyat Ayarı):</h6>
+                                    <ul>
+                                        <li>Yüzde kar marjı (örn: %50)</li>
+                                        <li>Sabit fiyat ekleme</li>
+                                        <li>Yuvarlama (.99, .90, .00)</li>
+                                        <li>Minimum fiyat belirleme</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Aktarım -->
+                        <div class="accordion-item">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#pageSync">
+                                    <i class="fas fa-play-circle me-2 text-success"></i> Aktarım
+                                </button>
+                            </h2>
+                            <div id="pageSync" class="accordion-collapse collapse" data-bs-parent="#pagesAccordion">
+                                <div class="accordion-body">
+                                    <p><strong>Amaç:</strong> Seçilen ürünleri Shopify'a aktarma</p>
+                                    <h6>İşlem Adımları:</h6>
+                                    <ol>
+                                        <li><strong>Fetch:</strong> S&S'den ürünler çekilir</li>
+                                        <li><strong>Cache:</strong> Ürünler önbelleğe alınır</li>
+                                        <li><strong>Group:</strong> Stiller gruplanır</li>
+                                        <li><strong>Sync:</strong> Shopify'a aktarılır</li>
+                                    </ol>
+                                    <h6>Özellikler:</h6>
+                                    <ul>
+                                        <li>Gerçek zamanlı ilerleme takibi</li>
+                                        <li>Hata logları</li>
+                                        <li>Oluşturulan ürün listesi</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Ürün Arama -->
+                        <div class="accordion-item">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#pageSearch">
+                                    <i class="fas fa-search me-2 text-info"></i> Ürün Arama
+                                </button>
+                            </h2>
+                            <div id="pageSearch" class="accordion-collapse collapse" data-bs-parent="#pagesAccordion">
+                                <div class="accordion-body">
+                                    <p><strong>Amaç:</strong> S&S ürünlerini arama ve hızlı aktarım</p>
+                                    <h6>Özellikler:</h6>
+                                    <ul>
+                                        <li>Ürün adı, SKU veya stil numarası ile arama</li>
+                                        <li>Ürün kartları ile görsel önizleme</li>
+                                        <li>Detaylı ürün bilgisi (metafields)</li>
+                                        <li>Tek tıkla Shopify'a aktarım</li>
+                                        <li>Depo seçimi ile hızlı import</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SHOPIFY KURULUMU -->
+        <div id="section-shopify-setup" class="doc-section" style="display: none;">
+            <div class="card">
+                <div class="card-header bg-success text-white">
+                    <h4 class="mb-0"><i class="fab fa-shopify me-2"></i>Shopify API Kurulumu</h4>
+                </div>
+                <div class="card-body">
+                    <h5>1. Custom App Oluşturma</h5>
+                    <ol>
+                        <li>Shopify Admin → Settings → Apps and sales channels</li>
+                        <li>"Develop apps" butonuna tıklayın</li>
+                        <li>"Create an app" → App ismi girin</li>
+                        <li>"Configure Admin API scopes" → Aşağıdaki izinleri verin:
+                            <ul>
+                                <li><code>write_products</code></li>
+                                <li><code>read_products</code></li>
+                                <li><code>write_inventory</code></li>
+                                <li><code>read_inventory</code></li>
+                            </ul>
+                        </li>
+                        <li>"Install app" → Access Token'ı kopyalayın</li>
+                    </ol>
+                    
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        <strong>Önemli:</strong> Access Token sadece bir kez gösterilir. Güvenli bir yere kaydedin!
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- DEPO MATRİX KURULUMU -->
+        <div id="section-warehouse-matrix" class="doc-section" style="display: none;">
+            <div class="card">
+                <div class="card-header bg-warning text-dark">
+                    <h4 class="mb-0"><i class="fas fa-warehouse me-2"></i>Depo Matrix Kurulumu (Quantity Sistemi)</h4>
+                </div>
+                <div class="card-body">
+                    <h5>Bu Özellik Ne İşe Yarar?</h5>
+                    <p>Müşterilerinizin ürün sayfasında tüm depolardaki stok miktarlarını görmesini ve farklı depolardan sipariş vermesini sağlar.</p>
+                    
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        Her depo için ayrı quantity girişi yapılabilir ve sepete eklenir.
+                    </div>
+
+                    <hr>
+
+                    <h5>Kurulum Adımları</h5>
+                    
+                    <div class="card bg-light mb-3">
+                        <div class="card-header">
+                            <strong>Adım 1:</strong> Liquid Snippet Oluşturma
+                        </div>
+                        <div class="card-body">
+                            <p>Shopify Admin → Online Store → Themes → Edit code</p>
+                            <p><strong>Snippets</strong> klasörüne yeni dosya ekleyin: <code>warehouse-matrix.liquid</code></p>
+                            <p>Aşağıdaki kodu kopyalayıp yapıştırın:</p>
+                            
+                            <div class="position-relative">
+                                <button class="btn btn-sm btn-outline-primary position-absolute top-0 end-0 m-2" onclick="copyCode('liquidCode')">
+                                    <i class="fas fa-copy"></i> Kopyala
+                                </button>
+                                <pre id="liquidCode" class="bg-dark text-light p-3 rounded" style="max-height: 400px; overflow-y: auto; font-size: 12px;"><code id="liquidCodeContent">Yükleniyor...</code></pre>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card bg-light mb-3">
+                        <div class="card-header">
+                            <strong>Adım 2:</strong> Product Template'e Ekleme
+                        </div>
+                        <div class="card-body">
+                            <p><strong>Sections</strong> klasöründe <code>main-product.liquid</code> veya <code>product-template.liquid</code> dosyasını bulun.</p>
+                            
+                            <h6>Dawn Tema (ve benzeri modern temalar):</h6>
+                            <p><code>variant_selector</code> bloğundan sonra ekleyin:</p>
+                            <pre class="bg-dark text-light p-3 rounded"><code>{% raw %}{%- when 'variant_selector' -%}
+  {%- render 'product-variant-selector', ... -%}
+  
+  {% comment %} DEPO STOK MATRİXİ {% endcomment %}
+  {% render 'warehouse-matrix' %}{% endraw %}</code></pre>
+
+                            <h6>Debut / Vintage Temalar:</h6>
+                            <p>Product form içinde, "Add to Cart" butonundan önce:</p>
+                            <pre class="bg-dark text-light p-3 rounded"><code>&lt;div class="product-form__item"&gt;
+  {% raw %}{% render 'warehouse-matrix' %}{% endraw %}
+&lt;/div&gt;
+
+&lt;button type="submit" name="add" class="btn"&gt;
+  Add to cart
+&lt;/button&gt;</code></pre>
+
+                            <h6>Özel Temalar:</h6>
+                            <p>Genellikle şu dosyalardan birinde olur:</p>
+                            <ul>
+                                <li><code>sections/main-product.liquid</code></li>
+                                <li><code>sections/product-template.liquid</code></li>
+                                <li><code>templates/product.liquid</code></li>
+                            </ul>
+                            <p><code>{% raw %}{% render 'warehouse-matrix' %}{% endraw %}</code> kodunu, variant seçiciden sonra ve "Add to Cart" butonundan önce ekleyin.</p>
+                        </div>
+                    </div>
+
+                    <div class="card bg-light mb-3">
+                        <div class="card-header">
+                            <strong>Adım 3:</strong> API URL'ini Güncelleme
+                        </div>
+                        <div class="card-body">
+                            <p>Snippet içindeki <code>API_BASE</code> değerini sunucu adresinizle değiştirin:</p>
+                            <pre class="bg-dark text-light p-3 rounded"><code>const API_BASE = 'https://YOUR-SERVER-URL.trycloudflare.com';</code></pre>
+                            <p class="text-muted">Not: Cloudflare Tunnel URL'i değişebilir. Sabit bir domain kullanmanız önerilir.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SEPET AYARLARI -->
+        <div id="section-cart-setup" class="doc-section" style="display: none;">
+            <div class="card">
+                <div class="card-header bg-danger text-white">
+                    <h4 class="mb-0"><i class="fas fa-shopping-cart me-2"></i>Sepet Ayarları</h4>
+                </div>
+                <div class="card-body">
+                    <h5>Depo Bilgisini Sepette Gösterme</h5>
+                    <p>Müşteri sepete ürün eklediğinde, hangi depodan ne kadar sipariş verdiği görünsün istiyorsanız:</p>
+                    
+                    <div class="card bg-light mb-3">
+                        <div class="card-header">
+                            Cart Template Düzenleme
+                        </div>
+                        <div class="card-body">
+                            <p><code>sections/main-cart-items.liquid</code> veya <code>templates/cart.liquid</code> dosyasında, ürün bilgileri gösterilen yerde:</p>
+                            
+                            <pre class="bg-dark text-light p-3 rounded"><code>{% raw %}{% for item in cart.items %}
+  &lt;div class="cart-item"&gt;
+    {{ item.product.title }}
+    
+    {% comment %} Depo bilgisi göster {% endcomment %}
+    {% if item.properties.size > 0 %}
+      &lt;div class="cart-item__properties"&gt;
+        {% for property in item.properties %}
+          {% unless property.first contains '_' %}
+            &lt;div class="property-row"&gt;
+              &lt;strong&gt;{{ property.first }}:&lt;/strong&gt; {{ property.last }}
+            &lt;/div&gt;
+          {% endunless %}
+        {% endfor %}
+      &lt;/div&gt;
+    {% endif %}
+  &lt;/div&gt;
+{% endfor %}{% endraw %}</code></pre>
+                        </div>
+                    </div>
+
+                    <h5>Line Item Properties</h5>
+                    <p>Depo matrix sistemi şu bilgileri sepete ekler:</p>
+                    <table class="table table-bordered">
+                        <thead>
+                            <tr>
+                                <th>Property</th>
+                                <th>Açıklama</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td><code>Renk</code></td><td>Seçilen varyant rengi</td></tr>
+                            <tr><td><code>Beden</code></td><td>Seçilen beden</td></tr>
+                            <tr><td><code>Depo</code></td><td>Seçilen depo adı</td></tr>
+                            <tr><td><code>Depo Kodu</code></td><td>Depo kısaltması (NV, TX, IL vb.)</td></tr>
+                            <tr><td><code>SKU</code></td><td>Ürün SKU numarası</td></tr>
+                            <tr><td><code>Birim Fiyat</code></td><td>Depo bazlı birim fiyat</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- SSS -->
+        <div id="section-faq" class="doc-section" style="display: none;">
+            <div class="card">
+                <div class="card-header bg-secondary text-white">
+                    <h4 class="mb-0"><i class="fas fa-question-circle me-2"></i>Sık Sorulan Sorular</h4>
+                </div>
+                <div class="card-body">
+                    <div class="accordion" id="faqAccordion">
+                        
+                        <div class="accordion-item">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#faq1">
+                                    Stok bilgileri ne sıklıkla güncellenir?
+                                </button>
+                            </h2>
+                            <div id="faq1" class="accordion-collapse collapse show" data-bs-parent="#faqAccordion">
+                                <div class="accordion-body">
+                                    Stok cache'i her 2 saatte bir otomatik güncellenir. Manuel güncelleme için Dashboard'daki "Stok Cache Güncelle" butonunu kullanabilirsiniz.
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="accordion-item">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq2">
+                                    Neden bazı bedenler 500 stok gösteriyor?
+                                </button>
+                            </h2>
+                            <div id="faq2" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                                <div class="accordion-body">
+                                    S&S Activewear API'si 500'den fazla stoğu "500" olarak gösterir. Bu bir API limitasyonudur. Gerçek stok 500'den fazla olabilir.
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="accordion-item">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq3">
+                                    Cloudflare Tunnel URL'i değişti, ne yapmalıyım?
+                                </button>
+                            </h2>
+                            <div id="faq3" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                                <div class="accordion-body">
+                                    Shopify temanızdaki <code>warehouse-matrix.liquid</code> snippet'inde <code>API_BASE</code> değerini yeni URL ile güncelleyin. Sabit URL için custom domain kullanmanız önerilir.
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="accordion-item">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq4">
+                                    Variant değişince tablo kayboluyor?
+                                </button>
+                            </h2>
+                            <div id="faq4" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                                <div class="accordion-body">
+                                    Bu, Shopify'ın Section Rendering özelliğinden kaynaklanır. Güncel <code>warehouse-matrix.liquid</code> snippet'i bu sorunu <code>window.WM</code> global state ile çözer. En son versiyonu kullandığınızdan emin olun.
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<style>
+.doc-nav-btn.active {
+    background-color: #0d6efd;
+    color: white;
+}
+.doc-section {
+    animation: fadeIn 0.3s ease;
+}
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+pre code {
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+.search-highlight {
+    background-color: yellow;
+    padding: 2px 4px;
+}
+</style>
+
+<script>
+function showSection(sectionId) {
+    // Tüm section'ları gizle
+    document.querySelectorAll('.doc-section').forEach(s => s.style.display = 'none');
+    
+    // Seçilen section'ı göster
+    document.getElementById('section-' + sectionId).style.display = 'block';
+    
+    // Buton active durumunu güncelle
+    document.querySelectorAll('.doc-nav-btn').forEach(btn => btn.classList.remove('active'));
+    event.target.classList.add('active');
+}
+
+function copyCode(elementId) {
+    const codeElement = document.getElementById(elementId + 'Content');
+    const text = codeElement.textContent;
+    
+    navigator.clipboard.writeText(text).then(() => {
+        // Başarılı
+        const btn = event.target.closest('button');
+        const originalHTML = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-check"></i> Kopyalandı!';
+        btn.classList.remove('btn-outline-primary');
+        btn.classList.add('btn-success');
+        
+        setTimeout(() => {
+            btn.innerHTML = originalHTML;
+            btn.classList.remove('btn-success');
+            btn.classList.add('btn-outline-primary');
+        }, 2000);
+    });
+}
+
+function searchDocs() {
+    const query = document.getElementById('docSearch').value.toLowerCase();
+    if (!query) return;
+    
+    // Tüm section'ları göster ve ara
+    document.querySelectorAll('.doc-section').forEach(section => {
+        section.style.display = 'block';
+        
+        // Highlight
+        const text = section.innerHTML;
+        // Simple highlight (production'da daha gelişmiş bir çözüm kullanılabilir)
+    });
+    
+    alert('Arama sonuçları: "' + query + '" için tüm bölümler gösteriliyor.');
+}
+
+// Liquid kodunu yükle
+async function loadLiquidCode() {
+    try {
+        const response = await fetch('/static/shopify/warehouse-matrix.liquid');
+        if (response.ok) {
+            const code = await response.text();
+            document.getElementById('liquidCodeContent').textContent = code;
+        } else {
+            document.getElementById('liquidCodeContent').textContent = '// Kod yüklenemedi. Dosya: /static/shopify/warehouse-matrix.liquid';
+        }
+    } catch (e) {
+        document.getElementById('liquidCodeContent').textContent = '// Kod yüklenirken hata oluştu: ' + e.message;
+    }
+}
+
+// Sayfa yüklendiğinde
+document.addEventListener('DOMContentLoaded', loadLiquidCode);
+</script>
+{% endblock %}
+

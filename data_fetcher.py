@@ -233,16 +233,31 @@ class DataFetcher:
             style_list = [int(style_ids)] if style_ids and str(style_ids).isdigit() else []
 
         brand_filters = filter_options.get("filter_brands", [])
+        brand_ids = []
         brand_names = []
         if isinstance(brand_filters, list):
             for bf in brand_filters:
                 bf_str = str(bf).strip()
-                if bf_str and not bf_str.isdigit():
-                    brand_names.append(bf_str)
+                if bf_str:
+                    if bf_str.isdigit():
+                        brand_ids.append(int(bf_str))
+                    else:
+                        brand_names.append(bf_str)
         elif isinstance(brand_filters, str):
-            brand_names = [b.strip() for b in brand_filters.split(",") if b.strip() and not b.strip().isdigit()]
+            for b in brand_filters.split(","):
+                b = b.strip()
+                if b:
+                    if b.isdigit():
+                        brand_ids.append(int(b))
+                    else:
+                        brand_names.append(b)
         else:
-            brand_names = [str(brand_filters).strip()] if brand_filters and not str(brand_filters).isdigit() else []
+            bf_str = str(brand_filters).strip() if brand_filters else ""
+            if bf_str:
+                if bf_str.isdigit():
+                    brand_ids.append(int(bf_str))
+                else:
+                    brand_names.append(bf_str)
 
         # CRITICAL: Get warehouse filter!
         warehouse_codes = filter_options.get("filter_warehouses", [])
@@ -256,7 +271,7 @@ class DataFetcher:
 
         all_products = []
 
-        # CRITICAL: Use API-level filtering for styles AND warehouses
+        # Fetch products by style IDs (DO NOT pass warehouse to API - it causes 404 errors!)
         if style_list:
             print(f"Using API-level filtering for {len(style_list)} styles (batched)...")
 
@@ -267,10 +282,10 @@ class DataFetcher:
             batched_products = []
             for batch in chunks(style_list, 50):  # batch styleid list to avoid oversized queries
                 styleid_param = ",".join([str(sid) for sid in batch])
-                print(f"Fetching products with styleid batch size={len(batch)}, warehouses={warehouse_param}")
+                print(f"Fetching products with styleid batch size={len(batch)}")
                 try:
-                    # CRITICAL: Pass warehouse filter to API!
-                    products = self.ss_client.get_products(styleid=styleid_param, warehouses=warehouse_param, limit=5000)
+                    # DO NOT pass warehouse to API - it causes 404 if style has no stock in that warehouse
+                    products = self.ss_client.get_products(styleid=styleid_param, limit=5000)
                     print(f"API returned {len(products)} products for batch")
                     batched_products.extend(products)
                 except Exception as e:
@@ -279,10 +294,22 @@ class DataFetcher:
                     continue
             all_products = batched_products
         else:
-            # No style filter, get all products with warehouse filter
-            print(f"No style filter, fetching all products with warehouses={warehouse_param}...")
-            all_products = self.ss_client.get_products(warehouses=warehouse_param, limit=5000)
+            # No style filter, get all products
+            print(f"No style filter, fetching all products...")
+            all_products = self.ss_client.get_products(limit=5000)
             print(f"Fetched {len(all_products)} products")
+        
+        # Filter by warehouse in Python (must have stock in at least one selected warehouse)
+        if warehouse_codes and all_products:
+            print(f"Filtering {len(all_products)} products by warehouses: {warehouse_codes}...")
+            warehouse_set = set(warehouse_codes)
+            filtered = []
+            for product in all_products:
+                product_warehouses = [wh.get("warehouseAbbr") for wh in product.get("warehouses", [])]
+                if any(wh in warehouse_set for wh in product_warehouses):
+                    filtered.append(product)
+            all_products = filtered
+            print(f"After warehouse filter: {len(all_products)} products")
 
         # CRITICAL FIX: If styles were selected, SKIP category filter
         if category_list and all_products:
@@ -320,13 +347,18 @@ class DataFetcher:
                 all_products = filtered
                 print(f"After category filter: {len(all_products)} products")
 
-        # Filter by brands if selected
-        if brand_names and all_products:
-            print(f"Filtering {len(all_products)} products by {len(brand_names)} brands...")
+        # Filter by brands if selected (by ID or name)
+        if (brand_ids or brand_names) and all_products:
+            print(f"Filtering {len(all_products)} products by brands (IDs: {len(brand_ids)}, Names: {len(brand_names)})...")
+            # Convert brand_ids to strings for comparison (S&S API returns brandID as string)
+            brand_id_strs = set(str(bid) for bid in brand_ids)
             filtered = []
             for product in all_products:
-                product_brand = product.get("brandName", "").strip()
-                if product_brand in brand_names:
+                product_brand_id = str(product.get("brandID") or product.get("brandId") or "")
+                product_brand_name = product.get("brandName", "").strip()
+                
+                # Match by ID (as string) or name
+                if (brand_id_strs and product_brand_id in brand_id_strs) or (brand_names and product_brand_name in brand_names):
                     filtered.append(product)
             all_products = filtered
             print(f"After brand filter: {len(all_products)} products")

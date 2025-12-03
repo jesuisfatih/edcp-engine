@@ -8,6 +8,17 @@ from shopify_gateway import ShopifyGateway
 from sync_orchestrator import SyncOrchestrator
 from database import init_database
 
+# Cache invalidation
+def invalidate_synced_styles(style_ids: list):
+    """Invalidate cache for synced styles to force fresh data"""
+    try:
+        from cache_manager import cache_manager
+        for style_id in style_ids:
+            cache_manager.invalidate_style(str(style_id))
+        print(f"✅ Invalidated cache for {len(style_ids)} synced styles")
+    except Exception as e:
+        print(f"Cache invalidation error: {e}")
+
 from typing import Dict, List, Optional
 import time
 import uuid
@@ -56,6 +67,17 @@ class SyncManager:
             'data': data or {}
         }
         self.logs.append(log_entry)
+        
+        # Also track in system monitor
+        try:
+            from app import add_system_log
+            log_type_map = {
+                'info': 'INFO', 'success': 'SUCCESS', 'warning': 'WARNING',
+                'error': 'ERROR', 'step': 'SYNC'
+            }
+            add_system_log(log_type_map.get(level, 'SYNC'), message, 'main')
+        except:
+            pass
         # Keep only last 1000 logs to prevent memory issues
         if len(self.logs) > 1000:
             self.logs = self.logs[-1000:]
@@ -232,20 +254,18 @@ class SyncManager:
                 access_token=self.shopify_client.access_token
             )
             
-            # CRITICAL: Delete ALL existing Shopify products ONCE at start
-            self._add_log('step', '🗑️ Deleting ALL existing Shopify products...')
-            try:
-                deleted_count = shopify_gateway.delete_all_products()
-                self._add_log('success', f'✅ Deleted {deleted_count} existing products')
-            except Exception as e:
-                self._add_log('warning', f'⚠️ Could not delete existing products: {e}')
+            # NOT: Otomatik silme KALDIRILDI - Güvenlik için
+            # Artık sadece CREATE/UPDATE yapılıyor, silme işlemi manuel tetiklenmeli
+            self._add_log('info', '🔒 Güvenli mod: Mevcut ürünler korunuyor, sadece güncelleme/oluşturma yapılacak')
             
             # Create Sync Orchestrator (with sync_options for arbitraj pricing etc.)
+            # Pass self as parent for real-time stats updates
             orchestrator = SyncOrchestrator(
                 sync_id=self.sync_id,
                 shopify_gateway=shopify_gateway,
                 log_callback=self._add_log,
-                sync_options=self.sync_options
+                sync_options=self.sync_options,
+                parent_sync_manager=self  # Enable real-time stats updates
             )
             
             # Execute sync with new architecture
@@ -257,6 +277,11 @@ class SyncManager:
             self.stats['errors'] = sync_stats.get('errors', 0)
             
             self._add_log('step', '✅ NEW ARCHITECTURE sync complete', {'stats': sync_stats})
+            
+            # Invalidate cache for synced styles
+            synced_styles = list(set(p.get('styleID') for p in self._cached_products if p.get('styleID'))) if hasattr(self, '_cached_products') else []
+            if synced_styles:
+                invalidate_synced_styles(synced_styles)
             
             # NEW ARCHITECTURE is the ONLY way - no fallback
             self.status = 'completed'
@@ -305,6 +330,17 @@ class SyncManager:
                 
                 group_id = group['group_id']
                 product_name = group.get('title', 'Unknown Product')
+                
+                # Update current product info for UI display
+                self.current_product = {
+                    'sku': group_id,
+                    'styleName': product_name,
+                    'brandName': group.get('vendor', ''),
+                    'colorName': '',
+                    'title': product_name,
+                    'index': processed_groups - 1,
+                    'total': total_groups
+                }
                 
                 self.message = f'Processing {processed_groups}/{total_groups}: {product_name}'
                 self._add_log('info', f'📋 İşleniyor ({processed_groups}/{total_groups}): {product_name}', {

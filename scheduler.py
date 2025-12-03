@@ -161,6 +161,13 @@ class WarehouseStockScheduler:
             self.thread = threading.Thread(target=self._scheduler_loop, daemon=True)
             self.thread.start()
             print("📦 Warehouse Stock Scheduler started (every 2 hours)")
+            
+            # Track in system monitor
+            try:
+                from app import add_system_log
+                add_system_log('SCHEDULER', 'Warehouse Stock Scheduler başlatıldı (2 saat aralıkla)', 'scheduler')
+            except:
+                pass
     
     def stop(self):
         """Stop warehouse stock scheduler"""
